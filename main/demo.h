@@ -25,6 +25,9 @@ void demo_badge_key(bsp_btn_t btn, bsp_btn_ev_t ev);
 void demo_settings_enter(void); void demo_settings_exit(void);
 void demo_settings_key(bsp_btn_t btn, bsp_btn_ev_t ev);
 
+void demo_portal_enter(void);  void demo_portal_exit(void);
+void demo_portal_key(bsp_btn_t btn, bsp_btn_ev_t ev);
+
 void demo_display_enter(void); void demo_display_exit(void);
 void demo_display_key(bsp_btn_t btn, bsp_btn_ev_t ev);
 

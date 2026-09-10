@@ -12,9 +12,11 @@
 #include "bsp_battery.h"
 #include "bsp_pins.h"      // 错误日志里要打印 BSP_LCD_* 引脚号
 #include "app_config.h"
+#include "app_store.h"
 #include "app_wifi.h"
 #include "demo.h"
 #include "ui_pixel.h"
+#include "fonts/fonts.h"
 #include "lvgl.h"
 #include "esp_log.h"
 #include "esp_sleep.h"
@@ -25,6 +27,7 @@ static const char *TAG = "main";
 enum {
     DEMO_BADGE,
     DEMO_SETTINGS,
+    DEMO_PORTAL,
     DEMO_DISPLAY,
     DEMO_BUTTON,
     DEMO_AUDIO,
@@ -37,6 +40,7 @@ enum {
 static const demo_entry_t DEMOS[DEMO_COUNT] = {
     [DEMO_BADGE]     = { "Badge",     demo_badge_enter,     demo_badge_exit,     demo_badge_key     },
     [DEMO_SETTINGS]  = { "Settings",  demo_settings_enter,  demo_settings_exit,  demo_settings_key  },
+    [DEMO_PORTAL]    = { "配网",      demo_portal_enter,    demo_portal_exit,    demo_portal_key    },
     [DEMO_DISPLAY]   = { "Display",   demo_display_enter,   demo_display_exit,   demo_display_key   },
     [DEMO_BUTTON]    = { "Button",    demo_button_enter,    demo_button_exit,    demo_button_key    },
     [DEMO_AUDIO]     = { "Audio",     demo_audio_enter,     demo_audio_exit,     demo_audio_key     },
@@ -111,7 +115,8 @@ static void menu_build(void) {
         // ui_pixel_panel_create 先建投影再建卡片,两者相邻,投影就是前一个子对象。
         s_shadows[i] = lv_obj_get_child(s_menu_scr, lv_obj_get_index(s_cards[i]) - 1);
         s_rows[i] = lv_label_create(s_cards[i]);
-        lv_obj_set_style_text_font(s_rows[i], &lv_font_montserrat_14, 0);
+        // 行名可含中文(如"配网"),用 font_cjk_16;图标字形回退到 Montserrat
+        lv_obj_set_style_text_font(s_rows[i], &font_cjk_16, 0);
         lv_obj_set_style_text_align(s_rows[i], LV_TEXT_ALIGN_CENTER, 0);
         lv_obj_center(s_rows[i]);
     }
@@ -237,6 +242,7 @@ void app_main(void) {
 
     // 配置先于显示:背光初值、主题与开机页都取自 NVS。
     app_config_init();
+    app_store_init();          // 上传资产(头像/二维码图)的 FATFS,失败仅降级相关功能
     ui_pixel_set_theme(app_config_get()->theme);
 
     bsp_i2c_init();
@@ -254,6 +260,7 @@ void app_main(void) {
     // 其余外设单项失败不阻塞:菜单里标 [FAIL],其他项照常可用。
     s_ok[DEMO_BADGE]     = true;                              // 只依赖显示
     s_ok[DEMO_SETTINGS]  = true;
+    s_ok[DEMO_PORTAL]    = true;
     s_ok[DEMO_DISPLAY]   = true;
     s_ok[DEMO_BUTTON]    = (bsp_button_init(on_key, NULL) == ESP_OK);
     s_ok[DEMO_AUDIO]     = (bsp_audio_init() == ESP_OK);

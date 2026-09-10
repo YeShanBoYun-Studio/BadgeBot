@@ -3,6 +3,8 @@ idf_component_register(
          "app_config.c"
          "app_config_model.c"
          "app_clock.c"
+         "app_portal.c"
+         "app_store.c"
          "app_wifi.c"
          "ui_pixel.c"
          "ui_pixel_math.c"
@@ -10,6 +12,7 @@ idf_component_register(
          "fonts/font_cjk_16.c"
          "demo_badge.c"
          "demo_settings.c"
+         "demo_portal.c"
          "demo_display.c"
          "demo_button.c"
          "demo_audio.c"
@@ -19,5 +22,6 @@ idf_component_register(
          "demo_ble.c"
          "demo_low_power.c"
     INCLUDE_DIRS "."
-    REQUIRES bsp bt esp_event esp_hw_support esp_netif esp_timer esp_wifi nvs_flash
+    REQUIRES bsp bt esp_event esp_hw_support esp_http_server esp_netif esp_timer
+             esp_wifi fatfs json nvs_flash wear_levelling
 )
