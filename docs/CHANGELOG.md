@@ -6,6 +6,10 @@
 
 ## Unreleased
 
+- Reworked the shared UI: every screen now carries a top status bar (battery gauge, volume, Wi-Fi and Bluetooth icons) and a bottom key-hint bar where key caps with a thick border mean long press and a thin border mean short press. Added a light and a dark theme (extensible palette roles, persisted in NVS, switchable in settings), Chinese labels for the settings page and key hints rendered through a new 16 px CJK font, global auto screen-off with wake-on-any-key (the waking key press is not dispatched), manual screen off via long-press DOWN on the badge page, and a paginated menu that no longer rebuilds its screen when flipping pages. Mascot animations are now stopped before their screens are deleted, fixing a use-after-free that displaced the menu mascot.
+
+- Added a badge home page and a settings page. The badge page shows the configured name, organization, and title (with a hide toggle), a battery gauge, and a clock placeholder, and turns the backlight off after a configurable idle time. The settings page adjusts brightness, volume, home layout, screen-off delay, and boot page; all settings persist in NVS. User text renders with a new 20 px 1-bpp CJK bitmap font (ASCII + GB2312 level-1). The menu is now paginated, and the device boots into the badge page by default.
+
 - Added the supplied 80-byte CW2017 profile for the specified 520 mAh cell, including content/update-flag checks, verified writes, the required restart sequence, and bounded SOC-readiness polling.
 
 - Expanded the environment bootstrap document: added Espressif's Git service mirror (`git.espressif.com.cn`) as the preferred mainland-China route for ESP-IDF v5.5.3 and its submodules, documented submodule long-wait/timeout handling, in-place repair, and the pinned-commit shallow fetch for large submodules such as `esp32-wifi-lib`, warned about stale per-repository Jihulab `insteadOf` residue, and added the official offline release archive as a last-resort fallback (learned from `esp-mosaico/esp-mosaico-vibe`).

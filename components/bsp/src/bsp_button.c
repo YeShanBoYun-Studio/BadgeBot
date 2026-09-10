@@ -16,7 +16,6 @@ static const uint16_t BTN_MV[BSP_BTN_COUNT][2] = BSP_BTN_MV_TABLE;
 static button_handle_t s_btn[BSP_BTN_COUNT];
 static bsp_btn_cb_t    s_cb;
 static void           *s_user;
-
 // ADC1 是 unit 级独占资源:iot_button 与 bsp_button_read_mv() 必须共用同一个 oneshot
 // 句柄。谁第二个调 adc_oneshot_new_unit() 谁就拿到 "adc1 is already in use"。
 static adc_oneshot_unit_handle_t s_adc;
@@ -31,6 +30,8 @@ static adc_cali_handle_t         s_cali;
 static void on_event(void *arg, void *usr_data, bsp_btn_ev_t ev) {
     (void)arg;
     if (!s_cb) return;
+    // 事件级日志:按键问题的唯一可靠证据源。发布版可降为 DEBUG。
+    ESP_LOGI(TAG, "btn=%d ev=%d", (int)(intptr_t)usr_data, (int)ev);
     s_cb((bsp_btn_t)(intptr_t)usr_data, ev, s_user);
 }
 static void cb_press (void *a, void *u) { on_event(a, u, BSP_BTN_PRESS);  }
@@ -72,6 +73,9 @@ esp_err_t bsp_button_init(bsp_btn_cb_t cb, void *user) {
         iot_button_register_cb(s_btn[i], BUTTON_SINGLE_CLICK,    NULL, cb_click,  idx);
         iot_button_register_cb(s_btn[i], BUTTON_DOUBLE_CLICK,    NULL, cb_double, idx);
         iot_button_register_cb(s_btn[i], BUTTON_LONG_PRESS_START,NULL, cb_long,   idx);
+        // 兜底:个别批次/抖动下 START 的触发窗口可能错过,UP(长按后松开)再补一次;
+        // 上层对 LONG 的处理是幂等的(回菜单/息屏),连发无害。
+        iot_button_register_cb(s_btn[i], BUTTON_LONG_PRESS_UP,   NULL, cb_long,   idx);
     }
 
     // 通道已由组件配置好,这里只补一份校准句柄给 bsp_button_read_mv() 用。

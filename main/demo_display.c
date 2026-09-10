@@ -46,7 +46,11 @@ void demo_display_enter(void) {
 
 void demo_display_exit(void) {
     bsp_display_backlight(100);          // 退出时恢复全亮,免得菜单看不见
-    if (s_scr) { lv_obj_delete(s_scr); s_scr = NULL; s_swatch = s_info = s_mascot = NULL; }
+    if (s_scr) {
+        ui_pixel_mascot_stop(s_mascot);  // 眨眼是无限动画,删屏前必须停掉
+        lv_obj_delete(s_scr);
+        s_scr = NULL; s_swatch = s_info = s_mascot = NULL;
+    }
 }
 
 void demo_display_key(bsp_btn_t btn, bsp_btn_ev_t ev) {

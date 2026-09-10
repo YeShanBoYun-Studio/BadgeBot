@@ -152,6 +152,7 @@ void demo_low_power_exit(void)
     bsp_display_backlight(100);
     esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_TIMER);
     if (s_scr) {
+        ui_pixel_mascot_stop(s_mascot);   // 眨眼是无限动画,删屏前必须停掉
         lv_obj_delete(s_scr);
         s_scr = NULL;
         s_status = NULL;

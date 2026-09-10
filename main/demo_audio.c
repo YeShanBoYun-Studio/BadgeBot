@@ -111,7 +111,7 @@ void demo_audio_enter(void) {
     lv_obj_set_style_text_align(s_status, LV_TEXT_ALIGN_CENTER, 0);
     lv_label_set_long_mode(s_status, LV_LABEL_LONG_WRAP);
     lv_obj_set_width(s_status, 176);
-    lv_label_set_text(s_status, "OK: 1kHz TONE\nUP: RECORD + PLAY");
+    lv_label_set_text(s_status, "OK: 1kHz TONE\nUP: RECORD + PLAY\nHOLD OK: BACK");
     lv_obj_align(s_status, LV_ALIGN_BOTTOM_MID, 0, -9);
 
     s_mascot = ui_pixel_mascot_create(s_scr, 101, 238);
@@ -124,7 +124,11 @@ void demo_audio_enter(void) {
 void demo_audio_exit(void) {
     s_req = 0;
     if (s_task) { vTaskDelete(s_task); s_task = NULL; }
-    if (s_scr) { lv_obj_delete(s_scr); s_scr = NULL; s_status = s_mascot = NULL; }
+    if (s_scr) {
+        ui_pixel_mascot_stop(s_mascot);   // 眨眼是无限动画,删屏前必须停掉
+        lv_obj_delete(s_scr);
+        s_scr = NULL; s_status = s_mascot = NULL;
+    }
 }
 
 void demo_audio_key(bsp_btn_t btn, bsp_btn_ev_t ev) {
