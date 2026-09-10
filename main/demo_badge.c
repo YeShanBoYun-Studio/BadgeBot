@@ -38,14 +38,15 @@ static bool s_gh_ready_at_enter;   // GitHub 布局进入时是否已有缓存(�
 
 // 大缓冲进页按需分配、退页释放,平时不占堆:曾因常驻 ~60KB 静态把 Wi-Fi 驱动的
 // RX 缓冲挤出内存(开机 esp_wifi_init 报 NO_MEM,设备永不联网)。
-// 单块竞技场按布局切片:名片 = 头像原图+缩放副本;二维码 = 1bpp 文件+展开副本;热力图独用。
+// 按布局精确分配,尽量少占:名片 = 缩放副本常驻,原图临时用完即释放;
+// 二维码 = 1bpp 文件+展开副本;热力图独用;宠物不用。腾出的堆留给 Wi-Fi 脉冲的 TLS。
 #define AVATAR_SRC_BYTES (AVATAR_SRC * AVATAR_SRC * 2)
 #define AVATAR_DST_BYTES (AVATAR_SHOW * AVATAR_SHOW * 2)
 #define QRIMG_FILE_BYTES (QRIMG_SRC * QRIMG_SRC / 8)
 #define QRIMG_DST_BYTES  (QRIMG_SHOW * QRIMG_SHOW * 2)
 #define HEAT_BYTES       (HEAT_W * HEAT_H * 2)
-#define PAGE_BUF_MAX     (AVATAR_SRC_BYTES + AVATAR_DST_BYTES)   // 各布局中最大需求
-static uint8_t *s_page_buf;
+static uint8_t *s_page_buf;      // 当前布局的显示缓冲
+static uint8_t *s_avatar_src;    // 名片布局的原图临时缓冲,缩放后立即释放
 
 // 最近邻抽样缩小 RGB565 LE(LV_COLOR_DEPTH=16 且无 swap,缓冲可直接作为画布)
 static void shrink565(const uint8_t *src, int sw, int sh, uint8_t *dst, int dw, int dh) {
@@ -114,15 +115,19 @@ static void build_card(const app_config_t *cfg, const ui_theme_t *th) {
     lv_obj_t *card = ui_pixel_panel_create(s_scr, 11, 52, 218, 118, th->panel);
 
     // 头像:上传图缩小为 64x64 贴画布;未上传或内存不足时保持吉祥物
-    uint8_t *src = s_page_buf, *dst = s_page_buf + AVATAR_SRC_BYTES;
-    int n = s_page_buf ? app_store_read("avatar.rgb565", src, AVATAR_SRC_BYTES) : -1;
+    uint8_t *dst = s_page_buf;
+    int n = (s_page_buf && s_avatar_src)
+                ? app_store_read("avatar.rgb565", s_avatar_src, AVATAR_SRC_BYTES) : -1;
     if (n == AVATAR_SRC_BYTES) {
-        shrink565(src, AVATAR_SRC, AVATAR_SRC, dst, AVATAR_SHOW, AVATAR_SHOW);
+        shrink565(s_avatar_src, AVATAR_SRC, AVATAR_SRC, dst, AVATAR_SHOW, AVATAR_SHOW);
+        free(s_avatar_src);              // 原图用完即释放,给同窗口的 TLS 让堆
+        s_avatar_src = NULL;
         lv_obj_t *cv = lv_canvas_create(card);
         lv_canvas_set_buffer(cv, dst, AVATAR_SHOW, AVATAR_SHOW,
                              LV_COLOR_FORMAT_RGB565);
         lv_obj_set_pos(cv, 0, 0);
     } else {
+        if (s_avatar_src) { free(s_avatar_src); s_avatar_src = NULL; }
         lv_obj_t *avatar = ui_pixel_panel_create(card, 0, 0, 64, 64, th->dim);
         s_mascot = ui_pixel_mascot_create(avatar, 6, 1);
         s_has_mascot = true;
@@ -252,7 +257,23 @@ void demo_badge_enter(void) {
     const ui_theme_t *th = ui_pixel_theme();
     s_has_mascot = false;
     s_gh_ready_at_enter = app_github_ready();
-    s_page_buf = heap_caps_malloc(PAGE_BUF_MAX, MALLOC_CAP_8BIT);   // 失败则各布局降级
+    s_page_buf = NULL;
+    s_avatar_src = NULL;
+    // 按布局的精确需求分配(失败则该布局降级为占位内容)
+    switch (cfg->layout) {
+    case APP_LAYOUT_QR:
+        s_page_buf = heap_caps_malloc(QRIMG_FILE_BYTES + QRIMG_DST_BYTES, MALLOC_CAP_8BIT);
+        break;
+    case APP_LAYOUT_GITHUB:
+        s_page_buf = heap_caps_malloc(HEAT_BYTES, MALLOC_CAP_8BIT);
+        break;
+    case APP_LAYOUT_CARD:
+        s_page_buf = heap_caps_malloc(AVATAR_DST_BYTES, MALLOC_CAP_8BIT);
+        s_avatar_src = heap_caps_malloc(AVATAR_SRC_BYTES, MALLOC_CAP_8BIT);
+        break;
+    default:
+        break;                       // 宠物布局无大缓冲
+    }
     s_scr = ui_pixel_screen_create("BADGE");
 
     switch (cfg->layout) {
@@ -288,6 +309,7 @@ void demo_badge_exit(void) {
         s_name = s_org = s_title = s_clock = s_date = s_mascot = s_qr = NULL;
     }
     if (s_page_buf) { free(s_page_buf); s_page_buf = NULL; }
+    if (s_avatar_src) { free(s_avatar_src); s_avatar_src = NULL; }
 }
 
 void demo_badge_key(bsp_btn_t btn, bsp_btn_ev_t ev) {

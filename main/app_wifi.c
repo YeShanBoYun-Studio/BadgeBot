@@ -19,6 +19,8 @@
 #include "esp_mac.h"
 #include "esp_netif.h"
 #include "esp_random.h"
+#include "esp_heap_caps.h"
+#include "esp_system.h"
 #include "esp_wifi.h"
 #include "dns_server.h"
 #include "freertos/FreeRTOS.h"
@@ -73,6 +75,18 @@ static void pulse_connect_cycle(void)
     }
     if (s_connected) {
         ESP_LOGI(TAG, "已连接,保持 %d 秒(校时/拉取窗口)", CONNECT_HOLD_MS / 1000);
+        // 证书验证依赖正确时钟:先等 SNTP 校时(最多 15 秒),否则 1970 年的时钟
+        // 会让所有证书"尚未生效",TLS 握手必失败
+        for (int i = 0; i < 150 && !app_clock_synced(); i++) {
+            vTaskDelay(pdMS_TO_TICKS(100));
+        }
+        // 联网窗口前的内存快照(追查 TLS 验签问题时用)
+        ESP_LOGI("diag", "heap free=%u largest=%u minfree=%u stack_hwm=%u integ=%d",
+                 (unsigned)esp_get_free_heap_size(),
+                 (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_8BIT),
+                 (unsigned)esp_get_minimum_free_heap_size(),
+                 (unsigned)uxTaskGetStackHighWaterMark(NULL),
+                 (int)heap_caps_check_integrity_all(true));
         app_github_fetch();   // 联网窗口内刷新热力图缓存(阻塞数秒,窗口足够)
         vTaskDelay(pdMS_TO_TICKS(CONNECT_HOLD_MS));
     } else {
@@ -235,7 +249,9 @@ static void wifi_task(void *arg)
 
 void app_wifi_start(void)
 {
-    if (xTaskCreate(wifi_task, "app_wifi", 6144, NULL, 4, &s_task) != pdPASS) {
+    // 12KB 栈:esp_http_client + TLS 握手(X509 验签)在本任务内同步执行,
+    // 6KB 时握手期的深调用曾把验签数据踩坏(证书报"签名验证失败 0x4290")
+    if (xTaskCreate(wifi_task, "app_wifi", 12288, NULL, 4, &s_task) != pdPASS) {
         ESP_LOGE(TAG, "Wi-Fi 任务创建失败");
     }
 }

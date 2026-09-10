@@ -6,6 +6,10 @@
 
 ## Unreleased
 
+- Fixed avatar uploads failing with "write failed": FATFS long-filename support was disabled, and the 96×96 avatar filename exceeds the 8.3 short-name limit (the QR-image filename happened to fit, which is why only avatars failed). The provisioning portal also gained a manual square-crop editor (draggable, resizable selection centered on the subject), a 10-second heartbeat line that shows the remaining hotspot time and turns red when the device is unreachable, and clear success/failure coloring on every action.
+
+- Reworked the heatmap fetch for constrained memory: the public contributions API returns ~255 KB per user, which is now streamed through a 2 KB rolling-window parser into the 371-byte NVS cache instead of being buffered whole; the fetch waits for SNTP time sync before connecting and retries once. Large badge-page buffers are now sized per layout. Known issue: server-certificate verification currently fails deterministically on this device for every TLS chain (RSA operations), so the fetch keeps the placeholder page until that is root-caused; the failure is graceful and cached data still renders.
+
 - The provisioning portal now keeps the hotspot open after saving Wi-Fi so avatar/QR uploads and profile edits can continue; a prominent "Finish & connect" button closes the hotspot on demand and the badge immediately goes online to sync time and fetch the heatmap. Every form action shows visible success (green) or failure (red) feedback, image decode failures are reported, and the page gained a Chinese/English toggle. Uploads remain strictly center-cropped to a square (96×96 avatar, 128×128 black-and-white QR image), which the labels now state.
 
 - The device UI gained a language setting (Chinese/English) covering the menu, settings rows and values, key hints, and static page texts (user-entered content is always shown as typed). The GB2312 font subsets are now built from a symbol list that automatically includes every non-ASCII character used in the UI sources, fixing glyphs that silently failed to render (previously some level-2 characters, e.g. the one in "liulan" / browse, were missing).
