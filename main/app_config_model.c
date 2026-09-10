@@ -10,7 +10,10 @@ static const uint8_t OFF_STEPS[] = { 0, 1, 5, 10, 30 };
 
 void app_config_defaults(app_config_t *cfg) {
     memset(cfg, 0, sizeof(*cfg));
-    snprintf(cfg->name, sizeof(cfg->name), "%s", "AI Passport");
+    snprintf(cfg->name, sizeof(cfg->name), "%s", "BadgeBot");
+    snprintf(cfg->qr_a, sizeof(cfg->qr_a), "%s",
+             "https://github.com/YeShanBoYun-Studio/BadgeBot");
+    cfg->hide_org_title = true;   // 公司/岗位默认隐藏,门户里可改
     cfg->layout = APP_LAYOUT_CARD;
     cfg->theme = 0;               // 浅色
     cfg->brightness = APP_CFG_BL_MAX;
@@ -37,6 +40,7 @@ bool app_config_sanitize(app_config_t *cfg) {
     changed |= terminate(cfg->name);
     changed |= terminate(cfg->org);
     changed |= terminate(cfg->title);
+    changed |= terminate(cfg->qr_a);
     if (cfg->layout >= APP_LAYOUT_COUNT) { cfg->layout = APP_LAYOUT_CARD; changed = true; }
     if (cfg->theme > 1) { cfg->theme = 0; changed = true; }
     changed |= clamp_u8(&cfg->brightness, APP_CFG_BL_MIN, APP_CFG_BL_MAX);

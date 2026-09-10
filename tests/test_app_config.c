@@ -14,9 +14,10 @@ static void test_defaults(void)
     assert(c.volume == 60);
     assert(c.screen_off_min == 5);
     assert(c.boot_badge);
-    assert(!c.hide_org_title);
-    assert(strlen(c.name) > 0);
+    assert(c.hide_org_title);                  // 公司/岗位默认隐藏
+    assert(strcmp(c.name, "BadgeBot") == 0);   // 默认名不绑定任何用户身份
     assert(c.org[0] == '\0' && c.title[0] == '\0');
+    assert(c.qr_a[0] != '\0');                 // 二维码槽 A 有可演示的默认内容
     assert(!app_config_sanitize(&c));          // 默认值本身必须合法
 }
 

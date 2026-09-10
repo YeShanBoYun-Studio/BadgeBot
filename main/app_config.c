@@ -12,7 +12,8 @@
 #include <string.h>
 
 static const char *TAG = "app_cfg";
-#define NVS_NS "badge"
+// 命名空间带版本:换名字即弃用旧数据(上一版命名空间里的实验数据不再读)。
+#define NVS_NS "badgebot_v2"
 
 static app_config_t s_cfg;
 static bool s_nvs_ready;
@@ -44,6 +45,7 @@ static esp_err_t load(void) {
     get_str (h, "name",  s_cfg.name,  sizeof(s_cfg.name));
     get_str (h, "org",   s_cfg.org,   sizeof(s_cfg.org));
     get_str (h, "title", s_cfg.title, sizeof(s_cfg.title));
+    get_str (h, "qr_a",  s_cfg.qr_a,  sizeof(s_cfg.qr_a));
     get_bool(h, "hide",  &s_cfg.hide_org_title);
     get_u8  (h, "layout",&s_cfg.layout);
     get_u8  (h, "theme", &s_cfg.theme);
@@ -70,6 +72,7 @@ static esp_err_t save(const app_config_t *cfg) {
     if ((e = nvs_set_str(h, "name",  cfg->name))  == ESP_OK &&
         (e = nvs_set_str(h, "org",   cfg->org))   == ESP_OK &&
         (e = nvs_set_str(h, "title", cfg->title)) == ESP_OK &&
+        (e = nvs_set_str(h, "qr_a",  cfg->qr_a))  == ESP_OK &&
         (e = nvs_set_u8 (h, "hide",  cfg->hide_org_title)) == ESP_OK &&
         (e = nvs_set_u8 (h, "layout",cfg->layout)) == ESP_OK &&
         (e = nvs_set_u8 (h, "theme", cfg->theme)) == ESP_OK &&

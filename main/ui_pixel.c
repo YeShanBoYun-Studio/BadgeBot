@@ -9,14 +9,17 @@ static void start_blink(lv_obj_t *eye);
 static const ui_theme_t THEMES[UI_THEME_COUNT] = {
     [0] = { "LIGHT",
             .bg = UI_SKY,     .panel = UI_PAPER,    .ink = UI_INK,
-            .muted = 0x4A5A66, .dim = UI_SKY_DIM,  .plate = UI_PAPER,
+            .line = UI_INK,   .shadow = UI_INK,     .muted = 0x4A5A66,
+            .dim = UI_SKY_DIM, .plate = UI_PAPER,
             .accent = UI_YELLOW, .footer = UI_GRASS, .footer_hi = 0xA7D93E,
             .chip = UI_INK,   .chip_text = UI_PAPER },
     [1] = { "DARK",
-            .bg = 0x0F141B,   .panel = 0x1C242E,    .ink = 0xE9EEF4,
-            .muted = 0x93A3B0, .dim = 0x36414D,    .plate = 0x232D39,
-            .accent = UI_YELLOW, .footer = 0x131A22, .footer_hi = 0x27313D,
-            .chip = 0x2A3542, .chip_text = 0xE9EEF4 },
+            /* 真深色:面板近黑、描边暗灰、文字柔白;亮色只留给强调与状态。 */
+            .bg = 0x000000,   .panel = 0x11161D,    .ink = 0xC9D3DC,
+            .line = 0x2A323C, .shadow = 0x000000,   .muted = 0x7A8592,
+            .dim = 0x232B34,  .plate = 0x11161D,
+            .accent = 0xFFD928, .footer = 0x0B0E12, .footer_hi = 0x1C232B,
+            .chip = 0x11161D, .chip_text = 0xC9D3DC },
 };
 static uint8_t s_theme;
 
@@ -133,9 +136,9 @@ lv_obj_t *ui_pixel_screen_create(const char *title)
     block(scr, 0, 290, 240, 30, th->footer);
     block(scr, 0, 290, 240, 2, th->footer_hi);
 
-    block(scr, 9, 12, 151, 33, th->ink);
+    block(scr, 9, 12, 151, 33, th->line);
     lv_obj_t *plate = block(scr, 5, 8, 151, 33, th->plate);
-    lv_obj_set_style_border_color(plate, lv_color_hex(th->ink), 0);
+    lv_obj_set_style_border_color(plate, lv_color_hex(th->line), 0);
     lv_obj_set_style_border_width(plate, 3, 0);
     lv_obj_t *heading = ui_pixel_label(plate, title, &lv_font_montserrat_20, th->ink);
     lv_obj_center(heading);
@@ -177,7 +180,7 @@ void ui_pixel_hints(lv_obj_t *scr, const ui_hint_t *hints, int count)
     for (int i = 0; i < count; i++) {
         int key_w = text_width_16(hints[i].keys) + 12;
         lv_obj_t *cap = block(scr, x, 294, key_w, 22, th->chip);
-        lv_obj_set_style_border_color(cap, lv_color_hex(th->ink), 0);
+        lv_obj_set_style_border_color(cap, lv_color_hex(th->line), 0);
         lv_obj_set_style_border_width(cap, hints[i].long_press ? 3 : 1, 0);
         lv_obj_t *key_label = ui_pixel_label(cap, hints[i].keys, &lv_font_montserrat_16, th->chip_text);
         lv_obj_center(key_label);
@@ -193,9 +196,10 @@ void ui_pixel_hints(lv_obj_t *scr, const ui_hint_t *hints, int count)
 lv_obj_t *ui_pixel_panel_create(lv_obj_t *parent, int x, int y, int w, int h,
                                 uint32_t color)
 {
-    block(parent, x + 5, y + 6, w, h, ui_pixel_theme()->ink);
+    const ui_theme_t *th = ui_pixel_theme();
+    block(parent, x + 5, y + 6, w, h, th->shadow);
     lv_obj_t *panel = block(parent, x, y, w, h, color);
-    lv_obj_set_style_border_color(panel, lv_color_hex(ui_pixel_theme()->ink), 0);
+    lv_obj_set_style_border_color(panel, lv_color_hex(th->line), 0);
     lv_obj_set_style_border_width(panel, 4, 0);
     lv_obj_set_style_pad_all(panel, 7, 0);
     return panel;
@@ -289,5 +293,5 @@ void ui_pixel_set_selected(lv_obj_t *panel, bool selected, bool enabled)
     uint32_t color = !enabled ? th->dim : (selected ? th->accent : th->panel);
     lv_obj_set_style_bg_color(panel, lv_color_hex(color), 0);
     lv_obj_set_style_border_color(panel,
-        lv_color_hex(selected ? 0xFFFFFF : th->ink), 0);
+        lv_color_hex(selected ? 0xFFFFFF : th->line), 0);
 }

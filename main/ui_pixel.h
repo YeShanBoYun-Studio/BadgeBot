@@ -23,7 +23,9 @@ typedef struct {
     const char *name;
     uint32_t bg;         // 屏幕底色
     uint32_t panel;      // 面板/卡片底色
-    uint32_t ink;        // 主要文字与描边
+    uint32_t ink;        // 主要文字
+    uint32_t line;       // 描边/分隔线(深色主题下用暗灰,避免大面积亮色)
+    uint32_t shadow;     // 面板投影(浅色主题=深描边,深色主题=纯黑)
     uint32_t muted;      // 次要文字
     uint32_t dim;        // 未激活图标
     uint32_t plate;      // 标题牌底色

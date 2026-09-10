@@ -24,9 +24,11 @@ CONFIG_LV_FONT_MONTSERRAT_14=y
 CONFIG_LV_FONT_MONTSERRAT_16=y
 CONFIG_LV_FONT_MONTSERRAT_20=y
 CONFIG_LV_FONT_MONTSERRAT_28=y
-# LVGL 内置 malloc 池大小(KB)。它是独立静态区、不与系统堆共享,配大了会白白占用 RAM。
-# 主页与设置页控件不多,24KB 足够;若自建复杂界面出现绘制卡死/看门狗,调大此值。
-CONFIG_LV_MEM_SIZE_KILOBYTES=24
+# 二维码控件(主页布局 B)。lv_qrcode 的画布走 LVGL 内存池,池要留够:160px QR 约 25KB。
+CONFIG_LV_USE_QRCODE=y
+# LVGL 内置 malloc 池大小(KB)。它是独立静态区、不与系统堆共享。
+# 48KB = 常规控件 + 160px 二维码画布;再加大前先核对内部 RAM 余量。
+CONFIG_LV_MEM_SIZE_KILOBYTES=48
 
 # --- 系统 ---
 CONFIG_FREERTOS_HZ=1000
