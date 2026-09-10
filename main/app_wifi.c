@@ -11,6 +11,7 @@
 // 之后每次脉冲零配置自动连接。
 #include "app_wifi.h"
 #include "app_clock.h"
+#include "app_github.h"
 #include "app_portal.h"
 #include "demo_radio.h"
 #include "esp_event.h"
@@ -72,6 +73,7 @@ static void pulse_connect_cycle(void)
     }
     if (s_connected) {
         ESP_LOGI(TAG, "已连接,保持 %d 秒(校时/拉取窗口)", CONNECT_HOLD_MS / 1000);
+        app_github_fetch();   // 联网窗口内刷新热力图缓存(阻塞数秒,窗口足够)
         vTaskDelay(pdMS_TO_TICKS(CONNECT_HOLD_MS));
     } else {
         ESP_LOGW(TAG, "连接失败(没有已存凭据或信号不佳),%d 分钟后重试",
@@ -98,7 +100,10 @@ static void portal_setup_ap(void)
 {
     uint8_t mac[6] = { 0 };
     esp_read_mac(mac, ESP_MAC_WIFI_STA);
-    snprintf(s_ap_ssid, sizeof(s_ap_ssid), "BadgeBot-%02X%02X", mac[4], mac[5]);
+    // 热点名每次配网随机化(用户要求不固定):BadgeBot-XXXX,密码同为随机
+    char suffix[5];
+    gen_random_pass(suffix, sizeof(suffix));
+    snprintf(s_ap_ssid, sizeof(s_ap_ssid), "BadgeBot-%s", suffix);
     gen_random_pass(s_ap_pass, sizeof(s_ap_pass));
 
     // 注意顺序:必须先切到 AP 模式再写 AP 配置,否则 set_config 返回
@@ -193,10 +198,15 @@ static void wifi_task(void *arg)
         return;
     }
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
-    if ((e = esp_wifi_init(&cfg)) != ESP_OK) {
-        ESP_LOGE(TAG, "esp_wifi_init 失败: %s", esp_err_to_name(e));
-        vTaskDelete(NULL);
-        return;
+    // C3 无 PSRAM,默认 10 静态 RX×1600B 偏重(徽章流量小);缩到 6/16 降低 NO_MEM 概率
+    cfg.static_rx_buf_num = 6;
+    cfg.dynamic_rx_buf_num = 16;
+    // 开机瞬间的堆竞争可能让 esp_wifi_init 拿不到内存:延迟重试而不是永久放弃联网
+    for (int attempt = 1;; attempt++) {
+        e = esp_wifi_init(&cfg);
+        if (e == ESP_OK) break;
+        ESP_LOGE(TAG, "esp_wifi_init 失败(%s),第 %d 次重试等 10s", esp_err_to_name(e), attempt);
+        vTaskDelay(pdMS_TO_TICKS(10000));
     }
     esp_event_handler_register(WIFI_EVENT, ESP_EVENT_ANY_ID, on_event, NULL);
     esp_event_handler_register(IP_EVENT, IP_EVENT_STA_GOT_IP, on_event, NULL);
@@ -206,6 +216,7 @@ static void wifi_task(void *arg)
 
     s_events = xEventGroupCreate();
 
+    pulse_connect_cycle();   // 开机先脉冲一次,尽快校时/拉热力图,不让用户等满一小时
     for (;;) {
         // 等待下一次脉冲(期间收到配网请求则立即切换)
         EventBits_t bits = xEventGroupWaitBits(s_events, EV_PORTAL | EV_EXIT, pdTRUE, pdFALSE,
