@@ -71,30 +71,28 @@ static void build_card(const app_config_t *cfg, const ui_theme_t *th) {
 }
 
 static void build_qr(const app_config_t *cfg, const ui_theme_t *th) {
-    // 二维码固定黑白色保证扫码对比度;底部小字提示内容来源。
+    // 二维码固定黑白色保证扫码对比度;底部小字提示内容来源。此布局不显示时间。
     bool has = cfg->qr_a[0] != '\0';
     s_qr = lv_qrcode_create(s_scr);
     lv_qrcode_set_size(s_qr, QR_SIZE);
     lv_qrcode_set_dark_color(s_qr, lv_color_hex(0x000000));
     lv_qrcode_set_light_color(s_qr, lv_color_hex(0xFFFFFF));
-    lv_obj_set_pos(s_qr, (240 - QR_SIZE) / 2, 50);
+    lv_obj_set_pos(s_qr, (240 - QR_SIZE) / 2, 62);
     if (has) lv_qrcode_update(s_qr, cfg->qr_a, strlen(cfg->qr_a));
     lv_obj_t *note = ui_pixel_label(s_scr, has ? "QR: 本地生成" : "QR: 未配置",
                                     &font_cjk_16, th->muted);
-    lv_obj_set_pos(note, 0, 214);
+    lv_obj_set_pos(note, 0, 232);
     lv_obj_set_width(note, 240);
     lv_obj_set_style_text_align(note, LV_TEXT_ALIGN_CENTER, 0);
-    build_clock(th, 224);
 }
 
 static void build_github(const ui_theme_t *th) {
-    // 占位:M4 在配网后拉取贡献热力图并缓存;当前明确告知状态,不画假数据。
-    lv_obj_t *panel = ui_pixel_panel_create(s_scr, 11, 52, 218, 156, th->panel);
+    // 占位:M4 在配网后拉取贡献热力图并缓存;当前明确告知状态,不画假数据。此布局不显示时间。
+    lv_obj_t *panel = ui_pixel_panel_create(s_scr, 11, 52, 218, 190, th->panel);
     lv_obj_t *t1 = ui_pixel_label(panel, "GitHub 热力图", &font_cjk_20, th->ink);
-    lv_obj_set_pos(t1, 4, 8);
+    lv_obj_set_pos(t1, 4, 16);
     lv_obj_t *t2 = ui_pixel_label(panel, "等待网络连接…\n配网后自动拉取提交记录", &font_cjk_16, th->muted);
-    lv_obj_set_pos(t2, 4, 44);
-    build_clock(th, 224);
+    lv_obj_set_pos(t2, 4, 60);
 }
 
 void demo_badge_enter(void) {
@@ -115,8 +113,11 @@ void demo_badge_enter(void) {
         { LV_SYMBOL_UP LV_SYMBOL_DOWN,   "布局", false },
     };
     ui_pixel_hints(s_scr, BADGE_HINTS, 3);
-    clock_tick(NULL);                        // 进页立刻显示当前时间状态
-    s_timer = lv_timer_create(clock_tick, CLOCK_TICK_MS, NULL);
+    if (cfg->layout == APP_LAYOUT_CARD) {
+        // 只有名片布局显示时间;二维码/GitHub 布局不建时钟控件,也不需要秒级刷新
+        clock_tick(NULL);                    // 进页立刻显示当前时间状态
+        s_timer = lv_timer_create(clock_tick, CLOCK_TICK_MS, NULL);
+    }
     lv_screen_load(s_scr);
 }
 
