@@ -101,14 +101,24 @@ static void portal_setup_ap(void)
     snprintf(s_ap_ssid, sizeof(s_ap_ssid), "BadgeBot-%02X%02X", mac[4], mac[5]);
     gen_random_pass(s_ap_pass, sizeof(s_ap_pass));
 
+    // 注意顺序:必须先切到 AP 模式再写 AP 配置,否则 set_config 返回
+    // ESP_ERR_WIFI_MODE 被静默忽略,热点会以空配置广播(手机看不到 BadgeBot)。
+    esp_err_t e = esp_wifi_set_mode(WIFI_MODE_AP);
+    if (e != ESP_OK) {
+        ESP_LOGE(TAG, "切 AP 模式失败: %s", esp_err_to_name(e));
+        return;
+    }
+
     wifi_config_t ap_cfg = { 0 };
     strlcpy((char *)ap_cfg.ap.ssid, s_ap_ssid, sizeof(ap_cfg.ap.ssid));
     ap_cfg.ap.ssid_len = strlen(s_ap_ssid);
     strlcpy((char *)ap_cfg.ap.password, s_ap_pass, sizeof(ap_cfg.ap.password));
     ap_cfg.ap.authmode = WIFI_AUTH_WPA2_PSK;
     ap_cfg.ap.max_connection = 2;
-    esp_wifi_set_config(WIFI_IF_AP, &ap_cfg);
-
+    if ((e = esp_wifi_set_config(WIFI_IF_AP, &ap_cfg)) != ESP_OK) {
+        ESP_LOGE(TAG, "AP 配置写入失败: %s", esp_err_to_name(e));
+        return;
+    }
     ESP_LOGI(TAG, "配网热点: %s / %s(日志打印仅用于开发,量产版移除)", s_ap_ssid, s_ap_pass);
 }
 
@@ -121,7 +131,6 @@ static void run_portal(uint32_t timeout_ms)
     esp_wifi_disconnect();
     esp_wifi_stop();
     portal_setup_ap();
-    esp_wifi_set_mode(WIFI_MODE_AP);
     esp_wifi_start();
     // 强制门户:捕获所有 DNS 查询,手机连上热点会自动弹出配置页(官方 captive_portal 做法)
     dns_server_config_t dns_cfg = DNS_SERVER_CONFIG_SINGLE("*", "WIFI_AP_DEF");
