@@ -15,6 +15,30 @@
 - 添加字库前评估 Flash 与内部 RAM 影响；ESP32-C3 无 PSRAM。
 - 不提交许可不允许分发的字库。
 
+工牌页面自带两个应用字体：`main/fonts/font_cjk_20.*`（用户内容：姓名、公司、岗位）
+与 `main/fonts/font_cjk_16.*`（界面框架：设置项、按键提示、状态文字）：
+
+- LVGL 1 bpp 位图字体，20 px 与 16 px；均覆盖可打印 ASCII、GB2312 一级汉字
+  （3755 字）与常用中文标点。分别占用 3 MB 应用分区的约 240 KB 与 200 KB；
+  若 20 px 用 4 bpp 单个就约需 850 KB。
+- 缺失字形（`LV_SYMBOL_*` 图标）回退到 `lv_font_montserrat_20` /
+  `lv_font_montserrat_16`，由生成时的 `--lv-fallback` 参数写入。
+- 源字体：Noto Sans SC Regular（SIL OFL 1.1）。生成的 `.inc` 是数据文件，勿手改；
+  每个包装 `.c` 只负责 include 对应的 `.inc`。
+- 用 `lv_font_conv` 1.5.3 重新生成（请在 POSIX shell 下执行；符号表超过
+  Windows `cmd.exe` 命令行长度上限）：
+
+  ```sh
+  npm install lv_font_conv@1.5.3
+  for sz in 20 16; do
+    npx lv_font_conv --font NotoSansSC-Regular.otf --range 0x20-0x7E \
+        --symbols "<GB2312 一级汉字 + 常用中文标点>" \
+        --size $sz --bpp 1 --format lvgl --lv-font-name font_cjk_$sz \
+        --lv-include lvgl.h --lv-fallback lv_font_montserrat_$sz \
+        --no-compress --output main/fonts/font_cjk_$sz.inc
+  done
+  ```
+
 ## 图片（images）
 
 可复用的源图与生成的显示资产放在 `images/`。

@@ -17,6 +17,32 @@ Store reusable font files and generated font sources in `fonts/`.
 - Check Flash and internal-RAM impact before adding a font; the ESP32-C3 has no PSRAM.
 - Do not commit fonts whose license does not permit redistribution.
 
+The badge pages ship two application fonts, `main/fonts/font_cjk_20.*` (user
+content: name, organization, title) and `main/fonts/font_cjk_16.*` (UI chrome:
+settings labels, key hints, status text):
+
+- LVGL 1 bpp bitmap fonts at 20 px and 16 px; each covers printable ASCII,
+  GB2312 level-1 Chinese (3755 characters), and common CJK punctuation. They
+  cost about 240 KB and 200 KB of the 3 MB application partition respectively.
+  4 bpp would cost roughly 850 KB for the 20 px size alone.
+- Missing glyphs (the `LV_SYMBOL_*` icons) fall back to `lv_font_montserrat_20`
+  / `lv_font_montserrat_16`, which the fonts embed via `--lv-fallback`.
+- Source font: Noto Sans SC Regular (SIL OFL 1.1). The generated `.inc` files
+  are data, do not edit by hand; each wrapper `.c` only includes its `.inc`.
+- Regenerate with `lv_font_conv` 1.5.3 (run from a POSIX shell; the symbol list
+  exceeds the Windows `cmd.exe` command-line length):
+
+  ```sh
+  npm install lv_font_conv@1.5.3
+  for sz in 20 16; do
+    npx lv_font_conv --font NotoSansSC-Regular.otf --range 0x20-0x7E \
+        --symbols "<GB2312 level-1 + CJK punctuation>" \
+        --size $sz --bpp 1 --format lvgl --lv-font-name font_cjk_$sz \
+        --lv-include lvgl.h --lv-fallback lv_font_montserrat_$sz \
+        --no-compress --output main/fonts/font_cjk_$sz.inc
+  done
+  ```
+
 ## Images
 
 Store reusable source images and generated display assets in `images/`.
