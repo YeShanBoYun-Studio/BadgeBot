@@ -10,6 +10,7 @@
 
 #define APP_CFG_STR_LEN     48    // UTF-8 字节上限(含 NUL),约 15 个汉字,够放姓名/公司/岗位
 #define APP_CFG_QR_LEN      128   // 二维码槽 A 的文本上限(URL/任意文本)
+#define APP_CFG_GH_LEN      40    // GitHub 用户名上限
 #define APP_CFG_BL_MIN      10    // 背光下限(%),0 会让屏幕全黑、无法操作
 #define APP_CFG_BL_MAX      100
 #define APP_CFG_BL_STEP     10
@@ -29,6 +30,7 @@ typedef struct {
     char    org[APP_CFG_STR_LEN];
     char    title[APP_CFG_STR_LEN];
     char    qr_a[APP_CFG_QR_LEN]; // 二维码槽 A:链接或文本,设备端生成二维码
+    char    gh_user[APP_CFG_GH_LEN]; // GitHub 用户名(热力图数据源)
     bool    hide_org_title;       // 主页不显示公司/岗位(默认隐藏)
     uint8_t layout;               // app_layout_t
     uint8_t theme;                // 0 = 浅色,1 = 深色;换主题后新屏生效

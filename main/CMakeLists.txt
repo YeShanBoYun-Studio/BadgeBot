@@ -3,6 +3,7 @@ idf_component_register(
          "app_config.c"
          "app_config_model.c"
          "app_clock.c"
+         "app_github.c"
          "app_portal.c"
          "app_store.c"
          "app_wifi.c"
@@ -22,6 +23,6 @@ idf_component_register(
          "demo_ble.c"
          "demo_low_power.c"
     INCLUDE_DIRS "."
-    REQUIRES bsp bt esp_event esp_hw_support esp_http_server esp_netif esp_timer
-             esp_wifi fatfs json nvs_flash wear_levelling dns_server
+    REQUIRES bsp bt esp_event esp_hw_support esp_http_client esp_http_server esp_netif
+             esp_timer esp_wifi fatfs json mbedtls nvs_flash wear_levelling dns_server
 )

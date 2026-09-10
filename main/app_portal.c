@@ -7,11 +7,13 @@
 // 保存 Wi-Fi 成功会让配网窗口在数秒后自动关闭(app_portal_notify_saved)。
 #include "app_portal.h"
 #include "app_config.h"
+#include "app_store.h"
 #include "app_wifi.h"
 #include "cJSON.h"
 #include "esp_http_server.h"
 #include "esp_log.h"
 #include "esp_wifi.h"
+#include <stdio.h>
 #include <string.h>
 
 static const char *TAG = "app_portal";
@@ -46,17 +48,49 @@ static const char PORTAL_HTML[] =
 "<label>二维码内容(链接或文本)</label><input id='bqr'>"
 "<button onclick='saveCfg()'>保存名片</button><span id='cm'></span>"
 "</fieldset>"
+"<fieldset><legend>图片(自动裁切)</legend>"
+"<label>头像(居中裁切 96x96)</label><input type='file' id='fav' accept='image/*'>"
+"<button onclick=\"up('/api/avatar',fid('fav').files[0],96,'rgb565',fid('am'))\">上传头像</button>"
+"<button onclick=\"clr('/api/avatar',fid('am'))\">清除</button><span id='am'></span>"
+"<label>二维码图(微信等,转 128x128 黑白)</label><input type='file' id='fqr' accept='image/*'>"
+"<button onclick=\"up('/api/qrimg',fid('fqr').files[0],128,'bw',fid('qm'))\">上传二维码图</button>"
+"<button onclick=\"clr('/api/qrimg',fid('qm'))\">清除</button><span id='qm'></span>"
+"</fieldset>"
+"<fieldset><legend>GitHub 热力图</legend>"
+"<label>用户名</label><input id='bgh'>"
+"<button onclick='saveGh()'>保存</button><span id='gm'></span>"
+"</fieldset>"
 "<p style='color:#93a3b0;font-size:13px'>保存 Wi-Fi 后,热点会自动关闭,工牌将在一小时内自动联网校时。</p>"
 "<script>"
 "function fid(id){return document.getElementById(id)}"
 "function fill(c){fid('ssid').value=c.sta_ssid||'';fid('bname').value=c.name||'';"
 "fid('borg').value=c.org||'';fid('btitle').value=c.title||'';"
-"fid('bhide').checked=!!c.hide;fid('bqr').value=c.qr_a||''}"
+"fid('bhide').checked=!!c.hide;fid('bqr').value=c.qr_a||'';fid('bgh').value=c.gh||''}"
 "function sv(u,b,m){fetch(u,{method:'POST',headers:{'Content-Type':'application/json'},"
 "body:JSON.stringify(b)}).then(function(r){return r.text()}).then(function(t){m.textContent=t})}"
 "function saveWifi(){sv('/api/wifi',{ssid:fid('ssid').value,pass:fid('pass').value},fid('wm'))}"
 "function saveCfg(){sv('/api/config',{name:fid('bname').value,org:fid('borg').value,"
 "title:fid('btitle').value,hide:fid('bhide').checked,qr_a:fid('bqr').value},fid('cm'))}"
+"function saveGh(){sv('/api/config',{gh:fid('bgh').value},fid('gm'))}"
+"function proc(file,size,mode,cb){var img=new Image();"
+"img.onload=function(){var s=Math.min(img.width,img.height);"
+"var cv=document.createElement('canvas');cv.width=size;cv.height=size;"
+"var cx=cv.getContext('2d');"
+"cx.drawImage(img,(img.width-s)/2,(img.height-s)/2,s,s,0,0,size,size);"
+"var d=cx.getImageData(0,0,size,size).data;var body;"
+"if(mode=='rgb565'){body=new Uint8Array(size*size*2);"
+"for(var i=0;i<size*size;i++){var v=((d[i*4]>>3)<<11)|((d[i*4+1]>>2)<<5)|(d[i*4+2]>>3);"
+"body[i*2]=v&255;body[i*2+1]=v>>8;}}"
+"else{body=new Uint8Array(size*size>>3);"
+"for(var i=0;i<size*size;i++){var lum=(d[i*4]*3+d[i*4+1]*4+d[i*4+2])>>3;"
+"if(lum>127)body[i>>3]|=1<<(i&7);}}"
+"cb(body)};img.src=URL.createObjectURL(file)}"
+"function up(u,f,size,mode,m){if(!f){m.textContent='请选择图片';return}"
+"proc(f,size,mode,function(body){fetch(u,{method:'POST',"
+"headers:{'Content-Type':'application/octet-stream'},body:body})"
+".then(function(r){return r.text()}).then(function(t){m.textContent=t})})}"
+"function clr(u,m){fetch(u,{method:'POST'}).then(function(r){return r.text()})"
+".then(function(t){m.textContent=t})}"
 "fetch('/api/config').then(function(r){return r.json()}).then(fill);"
 "</script></body></html>";
 
@@ -85,6 +119,7 @@ static esp_err_t get_config(httpd_req_t *req)
     cJSON_AddStringToObject(j, "org", c->org);
     cJSON_AddStringToObject(j, "title", c->title);
     cJSON_AddStringToObject(j, "qr_a", c->qr_a);
+    cJSON_AddStringToObject(j, "gh", c->gh_user);
     cJSON_AddBoolToObject(j, "hide", c->hide_org_title);
     cJSON_AddNumberToObject(j, "layout", c->layout);
     cJSON_AddNumberToObject(j, "theme", c->theme);
@@ -130,6 +165,8 @@ static esp_err_t post_config(httpd_req_t *req)
         strlcpy(c.title, item->valuestring, sizeof(c.title));
     if ((item = cJSON_GetObjectItem(j, "qr_a"))  && cJSON_IsString(item))
         strlcpy(c.qr_a, item->valuestring, sizeof(c.qr_a));
+    if ((item = cJSON_GetObjectItem(j, "gh"))    && cJSON_IsString(item))
+        strlcpy(c.gh_user, item->valuestring, sizeof(c.gh_user));
     if ((item = cJSON_GetObjectItem(j, "hide"))  && cJSON_IsBool(item))
         c.hide_org_title = cJSON_IsTrue(item);
     cJSON_Delete(j);
@@ -140,8 +177,7 @@ static esp_err_t post_config(httpd_req_t *req)
 }
 
 static esp_err_t post_wifi(httpd_req_t *req)
-{
-    char *body = read_body(req);
+{    char *body = read_body(req);
     if (!body) return send_text(req, "bad request");
     cJSON *j = cJSON_Parse(body);
     if (!j) return send_text(req, "bad json");
@@ -170,11 +206,57 @@ static esp_err_t post_wifi(httpd_req_t *req)
     return send_text(req, "已保存,工牌将自动联网");
 }
 
+// 流式接收 body 直写 /store 文件;content_len 为 0 表示删除该资产。
+// 头像 18KB、二维码图 2KB 都超出通用读缓冲,不能一次 recv。
+static esp_err_t upload_asset(httpd_req_t *req, const char *name, long expected_len)
+{
+    if (!app_store_ready()) return send_text(req, "存储不可用");
+
+    if (req->content_len == 0) {
+        app_store_write(name, NULL, 0);
+        return send_text(req, "已清除");
+    }
+    if (req->content_len != expected_len) return send_text(req, "数据长度不符");
+
+    char path[48];
+    snprintf(path, sizeof(path), "/store/%s", name);
+    FILE *f = fopen(path, "wb");
+    if (!f) return send_text(req, "写入失败");
+
+    char buf[512];
+    int remaining = req->content_len, failed = 0;
+    while (remaining > 0) {
+        int n = httpd_req_recv(req, buf, remaining > (int)sizeof(buf) ? (int)sizeof(buf) : remaining);
+        if (n <= 0) { failed = 1; break; }
+        if (fwrite(buf, 1, n, f) != (size_t)n) { failed = 1; break; }
+        remaining -= n;
+    }
+    fclose(f);
+    if (failed) {
+        app_store_write(name, NULL, 0);   // 半截文件直接清掉
+        return send_text(req, "接收中断,已回滚");
+    }
+    ESP_LOGI(TAG, "资产 %s 已上传(%ld 字节)", name, expected_len);
+    return send_text(req, "已上传");
+}
+
+static esp_err_t post_avatar(httpd_req_t *req)
+{
+    return upload_asset(req, "avatar.rgb565", 96 * 96 * 2);
+}
+
+static esp_err_t post_qrimg(httpd_req_t *req)
+{
+    return upload_asset(req, "qr_b.img", 128 * 128 / 8);
+}
+
 static const httpd_uri_t URIS[] = {
     { .uri = "/",          .method = HTTP_GET,  .handler = get_index  },
     { .uri = "/api/config",.method = HTTP_GET,  .handler = get_config },
     { .uri = "/api/config",.method = HTTP_POST, .handler = post_config},
     { .uri = "/api/wifi",  .method = HTTP_POST, .handler = post_wifi  },
+    { .uri = "/api/avatar",.method = HTTP_POST, .handler = post_avatar},
+    { .uri = "/api/qrimg", .method = HTTP_POST, .handler = post_qrimg },
 };
 
 static httpd_handle_t s_server;

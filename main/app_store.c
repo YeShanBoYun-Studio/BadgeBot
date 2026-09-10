@@ -5,6 +5,7 @@
 #include "esp_log.h"
 #include "wear_levelling.h"
 #include "esp_vfs_fat.h"
+#include <stdio.h>
 
 static const char *TAG = "app_store";
 static wl_handle_t s_wl = WL_INVALID_HANDLE;
@@ -33,4 +34,40 @@ esp_err_t app_store_init(void)
 bool app_store_ready(void)
 {
     return s_ready;
+}
+
+esp_err_t app_store_write(const char *name, const void *data, size_t len)
+{
+    if (!s_ready) return ESP_ERR_INVALID_STATE;
+    char path[48];
+    snprintf(path, sizeof(path), "/store/%s", name);
+
+    if (len == 0) {                       // 空数据 = 删除
+        remove(path);
+        return ESP_OK;
+    }
+    FILE *f = fopen(path, "wb");
+    if (!f) {
+        ESP_LOGW(TAG, "打开 %s 失败", path);
+        return ESP_FAIL;
+    }
+    size_t n = fwrite(data, 1, len, f);
+    fclose(f);
+    if (n != len) {
+        ESP_LOGW(TAG, "写入 %s 不完整(%u/%u)", path, (unsigned)n, (unsigned)len);
+        return ESP_FAIL;
+    }
+    return ESP_OK;
+}
+
+int app_store_read(const char *name, void *buf, size_t buf_len)
+{
+    if (!s_ready) return -1;
+    char path[48];
+    snprintf(path, sizeof(path), "/store/%s", name);
+    FILE *f = fopen(path, "rb");
+    if (!f) return -1;
+    size_t n = fread(buf, 1, buf_len, f);
+    fclose(f);
+    return (int)n;
 }

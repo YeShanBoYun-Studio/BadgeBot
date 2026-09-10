@@ -46,6 +46,7 @@ static esp_err_t load(void) {
     get_str (h, "org",   s_cfg.org,   sizeof(s_cfg.org));
     get_str (h, "title", s_cfg.title, sizeof(s_cfg.title));
     get_str (h, "qr_a",  s_cfg.qr_a,  sizeof(s_cfg.qr_a));
+    get_str (h, "gh",    s_cfg.gh_user, sizeof(s_cfg.gh_user));
     get_bool(h, "hide",  &s_cfg.hide_org_title);
     get_u8  (h, "layout",&s_cfg.layout);
     get_u8  (h, "theme", &s_cfg.theme);
@@ -73,6 +74,7 @@ static esp_err_t save(const app_config_t *cfg) {
         (e = nvs_set_str(h, "org",   cfg->org))   == ESP_OK &&
         (e = nvs_set_str(h, "title", cfg->title)) == ESP_OK &&
         (e = nvs_set_str(h, "qr_a",  cfg->qr_a))  == ESP_OK &&
+        (e = nvs_set_str(h, "gh",    cfg->gh_user)) == ESP_OK &&
         (e = nvs_set_u8 (h, "hide",  cfg->hide_org_title)) == ESP_OK &&
         (e = nvs_set_u8 (h, "layout",cfg->layout)) == ESP_OK &&
         (e = nvs_set_u8 (h, "theme", cfg->theme)) == ESP_OK &&

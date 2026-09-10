@@ -10,3 +10,9 @@ esp_err_t app_store_init(void);
 
 // /store 是否可用。
 bool app_store_ready(void);
+
+// 写入/覆盖一个资产文件(数据长度为 0 时删除该文件)。
+esp_err_t app_store_write(const char *name, const void *data, size_t len);
+
+// 读取资产文件到 buf(不超过 buf_len),返回实际字节数;-1 = 不存在或失败。
+int app_store_read(const char *name, void *buf, size_t buf_len);
