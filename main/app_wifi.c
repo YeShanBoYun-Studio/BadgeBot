@@ -103,7 +103,10 @@ static void portal_setup_ap(void)
 
     // 注意顺序:必须先切到 AP 模式再写 AP 配置,否则 set_config 返回
     // ESP_ERR_WIFI_MODE 被静默忽略,热点会以空配置广播(手机看不到 BadgeBot)。
-    esp_err_t e = esp_wifi_set_mode(WIFI_MODE_AP);
+    // 注意:门户期间必须用 APSTA(而不是纯 AP)——STA 接口存在,门户保存的
+    // Wi-Fi 凭据才能通过 esp_wifi_set_config(WIFI_IF_STA) 写入;纯 AP 下会报
+    // ESP_ERR_WIFI_MODE。模式切换须先于配置写入。
+    esp_err_t e = esp_wifi_set_mode(WIFI_MODE_APSTA);
     if (e != ESP_OK) {
         ESP_LOGE(TAG, "切 AP 模式失败: %s", esp_err_to_name(e));
         return;
@@ -132,6 +135,7 @@ static void run_portal(uint32_t timeout_ms)
     esp_wifi_stop();
     portal_setup_ap();
     esp_wifi_start();
+    esp_wifi_disconnect();   // 配网期间别让 STA 拿旧凭据自动连接
     // 强制门户:捕获所有 DNS 查询,手机连上热点会自动弹出配置页(官方 captive_portal 做法)
     dns_server_config_t dns_cfg = DNS_SERVER_CONFIG_SINGLE("*", "WIFI_AP_DEF");
     dns_server_handle_t dns_handle = start_dns_server(&dns_cfg);

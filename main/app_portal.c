@@ -16,7 +16,9 @@
 
 static const char *TAG = "app_portal";
 
-/* 内嵌配置页。为省转义,HTML/JS 里统一用单引号。 */
+/* 内嵌配置页。为省转义,HTML/JS 里统一用单引号。
+ * 注意:input 的 id 不能叫 name/title——那会撞上 window.name/window.title 内置属性,
+ * 导致取值拿到 undefined;统一用 fid() 显式取值。 */
 static const char PORTAL_HTML[] =
 "<!DOCTYPE html><html><head><meta charset='utf-8'>"
 "<meta name='viewport' content='width=device-width,initial-scale=1'>"
@@ -37,22 +39,24 @@ static const char PORTAL_HTML[] =
 "<button onclick='saveWifi()'>保存 Wi-Fi</button><span id='wm'></span>"
 "</fieldset>"
 "<fieldset><legend>名片</legend>"
-"<label>姓名</label><input id='name'>"
-"<label>公司</label><input id='org'>"
-"<label>岗位</label><input id='title'>"
-"<div class='chk'><input id='hide' type='checkbox'><label for='hide'>隐藏公司/岗位</label></div>"
-"<label>二维码内容(链接或文本)</label><input id='qr_a'>"
+"<label>姓名</label><input id='bname'>"
+"<label>公司</label><input id='borg'>"
+"<label>岗位</label><input id='btitle'>"
+"<div class='chk'><input id='bhide' type='checkbox'><label for='bhide'>隐藏公司/岗位</label></div>"
+"<label>二维码内容(链接或文本)</label><input id='bqr'>"
 "<button onclick='saveCfg()'>保存名片</button><span id='cm'></span>"
 "</fieldset>"
 "<p style='color:#93a3b0;font-size:13px'>保存 Wi-Fi 后,热点会自动关闭,工牌将在一小时内自动联网校时。</p>"
 "<script>"
-"function fill(c){ssid.value=c.sta_ssid||'';name.value=c.name||'';org.value=c.org||'';"
-"title.value=c.title||'';hide.checked=!!c.hide;qr_a.value=c.qr_a||''}"
+"function fid(id){return document.getElementById(id)}"
+"function fill(c){fid('ssid').value=c.sta_ssid||'';fid('bname').value=c.name||'';"
+"fid('borg').value=c.org||'';fid('btitle').value=c.title||'';"
+"fid('bhide').checked=!!c.hide;fid('bqr').value=c.qr_a||''}"
 "function sv(u,b,m){fetch(u,{method:'POST',headers:{'Content-Type':'application/json'},"
 "body:JSON.stringify(b)}).then(function(r){return r.text()}).then(function(t){m.textContent=t})}"
-"function saveWifi(){sv('/api/wifi',{ssid:ssid.value,pass:pass.value},wm)}"
-"function saveCfg(){sv('/api/config',{name:name.value,org:org.value,title:title.value,"
-"hide:hide.checked,qr_a:qr_a.value},cm)}"
+"function saveWifi(){sv('/api/wifi',{ssid:fid('ssid').value,pass:fid('pass').value},fid('wm'))}"
+"function saveCfg(){sv('/api/config',{name:fid('bname').value,org:fid('borg').value,"
+"title:fid('btitle').value,hide:fid('bhide').checked,qr_a:fid('bqr').value},fid('cm'))}"
 "fetch('/api/config').then(function(r){return r.json()}).then(fill);"
 "</script></body></html>";
 
