@@ -16,8 +16,10 @@
 #include "esp_event.h"
 #include "esp_log.h"
 #include "esp_mac.h"
+#include "esp_netif.h"
 #include "esp_random.h"
 #include "esp_wifi.h"
+#include "dns_server.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/event_groups.h"
 #include "freertos/task.h"
@@ -121,6 +123,12 @@ static void run_portal(uint32_t timeout_ms)
     portal_setup_ap();
     esp_wifi_set_mode(WIFI_MODE_AP);
     esp_wifi_start();
+    // 强制门户:捕获所有 DNS 查询,手机连上热点会自动弹出配置页(官方 captive_portal 做法)
+    dns_server_config_t dns_cfg = DNS_SERVER_CONFIG_SINGLE("*", "WIFI_AP_DEF");
+    dns_server_handle_t dns_handle = start_dns_server(&dns_cfg);
+    if (dns_handle == NULL) {
+        ESP_LOGW(TAG, "DNS 服务器启动失败,只能手动访问 192.168.4.1");
+    }
     if (app_portal_http_start() != ESP_OK) {
         ESP_LOGE(TAG, "HTTP 门户启动失败,退出配网模式");
     } else {
@@ -140,6 +148,7 @@ static void run_portal(uint32_t timeout_ms)
         }
         s_portal_active = false;
         app_portal_http_stop();
+        if (dns_handle) stop_dns_server(dns_handle);
         ESP_LOGI(TAG, "退出配网模式");
     }
 
@@ -160,6 +169,13 @@ static void wifi_task(void *arg)
 
     if (esp_netif_create_default_wifi_sta() == NULL) {
         ESP_LOGE(TAG, "默认 STA netif 创建失败,Wi-Fi 任务退出");
+        vTaskDelete(NULL);
+        return;
+    }
+    // AP netif 自带 DHCP 服务器:没有它手机连上热点拿不到 IP,门户不可达(官方 softAP
+    // 示例同样在 esp_wifi_init 之后创建 AP netif)。
+    if (esp_netif_create_default_wifi_ap() == NULL) {
+        ESP_LOGE(TAG, "默认 AP netif 创建失败,Wi-Fi 任务退出");
         vTaskDelete(NULL);
         return;
     }

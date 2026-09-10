@@ -23,5 +23,5 @@ idf_component_register(
          "demo_low_power.c"
     INCLUDE_DIRS "."
     REQUIRES bsp bt esp_event esp_hw_support esp_http_server esp_netif esp_timer
-             esp_wifi fatfs json nvs_flash wear_levelling
+             esp_wifi fatfs json nvs_flash wear_levelling dns_server
 )
