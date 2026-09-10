@@ -5,9 +5,15 @@ version="1.7.12"
 destination="${1:-/tmp/actionlint-${version}}"
 system_name="$(uname -s)"
 machine_name="$(uname -m)"
+archive_ext="tar.gz"
+bin_name="actionlint"
 
-if [[ -x "${destination}/actionlint" ]]; then
-    printf '%s\n' "${destination}/actionlint"
+if [[ -x "${destination}/actionlint" || -x "${destination}/actionlint.exe" ]]; then
+    if [[ -x "${destination}/actionlint.exe" ]]; then
+        printf '%s\n' "${destination}/actionlint.exe"
+    else
+        printf '%s\n' "${destination}/actionlint"
+    fi
     exit 0
 fi
 
@@ -28,13 +34,19 @@ case "${system_name}/${machine_name}" in
         platform="darwin_arm64"
         checksum="aba9ced2dee8d27fecca3dc7feb1a7f9a52caefa1eb46f3271ea66b6e0e6953f"
         ;;
+    MINGW*/x86_64|MSYS*/x86_64|CYGWIN*/x86_64)
+        platform="windows_amd64"
+        checksum="6e7241b51e6817ea6a047693d8e6fed13b31819c9a0dd6c5a726e1592d22f6e9"
+        archive_ext="zip"
+        bin_name="actionlint.exe"
+        ;;
     *)
         echo "Unsupported actionlint platform: ${system_name}/${machine_name}" >&2
         exit 1
         ;;
 esac
 
-archive_name="actionlint_${version}_${platform}.tar.gz"
+archive_name="actionlint_${version}_${platform}.${archive_ext}"
 archive_path="${destination}/${archive_name}"
 download_url="https://github.com/rhysd/actionlint/releases/download/v${version}/${archive_name}"
 
@@ -57,6 +69,10 @@ else
     echo "No SHA-256 verification tool is available" >&2
     exit 1
 fi
-tar -xzf "${archive_path}" -C "${destination}" actionlint
-chmod +x "${destination}/actionlint"
-printf '%s\n' "${destination}/actionlint"
+if [[ "${archive_ext}" == "zip" ]]; then
+    unzip -o -q "${archive_path}" "${bin_name}" -d "${destination}"
+else
+    tar -xzf "${archive_path}" -C "${destination}" "${bin_name}"
+fi
+chmod +x "${destination}/${bin_name}"
+printf '%s\n' "${destination}/${bin_name}"

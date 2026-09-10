@@ -4,3 +4,6 @@ sdkconfig.old
 managed_components/
 .vscode/
 .idea/
+.zcode/
+.mimosa/
+__pycache__/
