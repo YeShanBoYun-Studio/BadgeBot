@@ -17,6 +17,7 @@
 #include "app_wifi.h"
 #include "demo.h"
 #include "ui_pixel.h"
+#include "ui_text.h"
 #include "fonts/fonts.h"
 #include "lvgl.h"
 #include "esp_log.h"
@@ -39,15 +40,15 @@ enum {
 };
 
 static const demo_entry_t DEMOS[DEMO_COUNT] = {
-    [DEMO_BADGE]     = { "Badge",     demo_badge_enter,     demo_badge_exit,     demo_badge_key     },
-    [DEMO_SETTINGS]  = { "Settings",  demo_settings_enter,  demo_settings_exit,  demo_settings_key  },
-    [DEMO_PORTAL]    = { "配网",      demo_portal_enter,    demo_portal_exit,    demo_portal_key    },
-    [DEMO_DISPLAY]   = { "Display",   demo_display_enter,   demo_display_exit,   demo_display_key   },
-    [DEMO_BUTTON]    = { "Button",    demo_button_enter,    demo_button_exit,    demo_button_key    },
-    [DEMO_AUDIO]     = { "Audio",     demo_audio_enter,     demo_audio_exit,     demo_audio_key     },
-    [DEMO_BATTERY]   = { "Battery",   demo_battery_enter,   demo_battery_exit,   demo_battery_key   },
-    [DEMO_BLE]       = { "BLE",       demo_ble_enter,       demo_ble_exit,       demo_ble_key       },
-    [DEMO_LOW_POWER] = { "Low Power", demo_low_power_enter, demo_low_power_exit, demo_low_power_key },
+    [DEMO_BADGE]     = { "Badge",     "工牌",   demo_badge_enter,     demo_badge_exit,     demo_badge_key     },
+    [DEMO_SETTINGS]  = { "Settings",  "设置",   demo_settings_enter,  demo_settings_exit,  demo_settings_key  },
+    [DEMO_PORTAL]    = { "Portal",    "配网",   demo_portal_enter,    demo_portal_exit,    demo_portal_key    },
+    [DEMO_DISPLAY]   = { "Display",   "屏幕",   demo_display_enter,   demo_display_exit,   demo_display_key   },
+    [DEMO_BUTTON]    = { "Button",    "按键",   demo_button_enter,    demo_button_exit,    demo_button_key    },
+    [DEMO_AUDIO]     = { "Audio",     "音频",   demo_audio_enter,     demo_audio_exit,     demo_audio_key     },
+    [DEMO_BATTERY]   = { "Battery",   "电池",   demo_battery_enter,   demo_battery_exit,   demo_battery_key   },
+    [DEMO_BLE]       = { "BLE",       "蓝牙",   demo_ble_enter,       demo_ble_exit,       demo_ble_key       },
+    [DEMO_LOW_POWER] = { "Low Power", "低功耗", demo_low_power_enter, demo_low_power_exit, demo_low_power_key },
 };
 
 // 各外设初始化结果:失败的项在菜单里标 [FAIL] 且不允许进入。
@@ -92,9 +93,9 @@ static void menu_refresh(void) {
         set_hidden(s_cards[i], !present);
         set_hidden(s_shadows[i], !present);
         if (!present) continue;
-        lv_label_set_text_fmt(s_rows[i], "%s%s",
-                              DEMOS[idx].name,
-                              s_ok[idx] ? "" : "  [FAIL]");
+        const char *nm = DEMOS[idx].name;
+        if (app_config_get()->lang == 0 && DEMOS[idx].name_zh) nm = DEMOS[idx].name_zh;
+        lv_label_set_text_fmt(s_rows[i], "%s%s", nm, s_ok[idx] ? "" : "  [FAIL]");
         ui_pixel_set_selected(s_cards[i], idx == s_sel, s_ok[idx]);
         lv_obj_set_style_text_color(s_rows[i],
             s_ok[idx] ? lv_color_hex(ui_pixel_theme()->ink) : lv_color_hex(UI_RED), 0);
@@ -128,9 +129,9 @@ static void menu_build(void) {
         s_page_label = ui_pixel_label(s_menu_scr, "", &lv_font_montserrat_14, UI_PAPER);
         lv_obj_set_pos(s_page_label, 200, 262);
     }
-    static const ui_hint_t MENU_HINTS[] = {
-        { LV_SYMBOL_UP LV_SYMBOL_DOWN, "选择", false },
-        { "OK",                        "进入", false },
+    const ui_hint_t MENU_HINTS[] = {
+        { LV_SYMBOL_UP LV_SYMBOL_DOWN, ui_text(UI_T_SEL),  false },
+        { "OK",                        ui_text(UI_T_OPEN), false },
     };
     ui_pixel_hints(s_menu_scr, MENU_HINTS, 2);
 

@@ -4,6 +4,7 @@
 #include "demo.h"
 #include "app_wifi.h"
 #include "ui_pixel.h"
+#include "ui_text.h"
 #include "fonts/fonts.h"
 #include "lvgl.h"
 #include <stdio.h>
@@ -26,7 +27,7 @@ static void tick(lv_timer_t *t) {
         if (s_qr_shown) {    // 从活动转为结束:停表,等用户按键返回
             s_done = true;
             lv_timer_pause(s_timer);
-            lv_label_set_text(s_status, "配网已结束,按 OK 返回");
+            lv_label_set_text(s_status, ui_text(UI_T_PORTAL_DONE));
             lv_obj_remove_flag(s_status, LV_OBJ_FLAG_HIDDEN);
         }
         return;              // 尚未启动完成(脉冲任务在收尾上一个状态),继续等
@@ -51,8 +52,8 @@ static void tick(lv_timer_t *t) {
         lv_obj_set_style_text_align(s_info, LV_TEXT_ALIGN_CENTER, 0);
         lv_label_set_text_fmt(s_info, "%s  %s", ssid, pass);
 
-        s_url = ui_pixel_label(s_scr, "手机浏览器打开 192.168.4.1",
-                               &font_cjk_16, ui_pixel_theme()->muted);
+        s_url = ui_pixel_label(s_scr, "", &font_cjk_16, ui_pixel_theme()->muted);
+        lv_label_set_text_fmt(s_url, ui_text(UI_T_PORTAL_URL), "192.168.4.1");
         lv_obj_set_pos(s_url, 0, 254);
         lv_obj_set_width(s_url, 240);
         lv_obj_set_style_text_align(s_url, LV_TEXT_ALIGN_CENTER, 0);
@@ -73,13 +74,13 @@ void demo_portal_enter(void) {
     s_scr = ui_pixel_screen_create("PORTAL");
     s_qr_shown = false;
     s_done = false;
-    s_status = ui_pixel_label(s_scr, "正在启动热点…", &font_cjk_16, th->muted);
+    s_status = ui_pixel_label(s_scr, ui_text(UI_T_PORTAL_STARTING), &font_cjk_16, th->muted);
     lv_obj_set_pos(s_status, 0, 150);
     lv_obj_set_width(s_status, 240);
     lv_obj_set_style_text_align(s_status, LV_TEXT_ALIGN_CENTER, 0);
 
-    static const ui_hint_t PORTAL_HINTS[] = {
-        { "OK", "返回", false },
+    const ui_hint_t PORTAL_HINTS[] = {
+        { "OK", ui_text(UI_T_EXIT), false },
     };
     ui_pixel_hints(s_scr, PORTAL_HINTS, 1);
 

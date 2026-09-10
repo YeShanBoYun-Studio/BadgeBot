@@ -278,6 +278,12 @@ uint32_t app_wifi_portal_remaining_ms(void)
     return left > 0 ? (uint32_t)left : 0;
 }
 
+void app_wifi_portal_extend(uint32_t ms)
+{
+    // 保存 Wi-Fi 后热点不立刻关:给用户留出继续上传图片/保存资料的时间
+    s_portal_deadline += ms;
+}
+
 void app_portal_notify_saved(void)
 {
     s_portal_saved = true;

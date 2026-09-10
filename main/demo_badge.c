@@ -1,15 +1,18 @@
-// main/demo_badge.c —— 工牌主页,三套布局,上/下短按循环切换:
-//   A 名片   头像(门户上传,缺省为吉祥物)+姓名/公司/岗位(默认隐藏)
-//   B 二维码 左=链接生成码(门户"二维码内容"),右=上传的二维码图(如微信)
-//   C GitHub 提交热力图(app_github 缓存;未拉取到时显示引导文案)
+// main/demo_badge.c —— 工牌主页,四套布局,上/下短按循环切换(只经过设置里开启的布局):
+//   A 名片   头像(门户上传,缺省为吉祥物)+姓名/公司/岗位(默认隐藏)+时间
+//   B 二维码 左=链接生成码(门户"二维码内容"),右=上传的二维码图(如微信),带文字标识
+//   C GitHub 提交热力图(app_github 缓存;联网窗口拉到数据后本页自动重绘)
+//   D 宠物   大号吉祥物卡片(养成系统在 M7 逐步填充)
 // 电量/音量/Wi-Fi 在每屏共用的顶部状态栏;自动息屏由 main.c 统一处理。
 // 按键:OK 短按 = 打开菜单;▼ 长按 = 立即息屏;▲/▼ 短按 = 切换布局。
+// 上传图片统一由门户 JS 居中裁成正方形:头像 96x96,二维码图 128x128 黑白。
 #include "demo.h"
 #include "app_clock.h"
 #include "app_config.h"
 #include "app_github.h"
 #include "app_store.h"
 #include "ui_pixel.h"
+#include "ui_text.h"
 #include "fonts/fonts.h"
 #include "esp_heap_caps.h"
 #include "lvgl.h"
@@ -31,6 +34,7 @@ static lv_obj_t *s_clock, *s_date;
 static lv_obj_t *s_mascot, *s_qr;
 static lv_timer_t *s_timer;
 static bool s_has_mascot;
+static bool s_gh_ready_at_enter;   // GitHub 布局进入时是否已有缓存(变化则自动重绘)
 
 // 大缓冲进页按需分配、退页释放,平时不占堆:曾因常驻 ~60KB 静态把 Wi-Fi 驱动的
 // RX 缓冲挤出内存(开机 esp_wifi_init 报 NO_MEM,设备永不联网)。
@@ -70,14 +74,23 @@ static void qrimg_expand(const uint8_t *file, uint8_t *dst) {
 static void clock_tick(lv_timer_t *t) {
     (void)t;
     struct tm lt;
-    static const char *WD[7] = { "周日", "周一", "周二", "周三", "周四", "周五", "周六" };
+    unsigned lang = app_config_get()->lang;
     if (app_clock_local(&lt)) {
         lv_label_set_text_fmt(s_clock, "%02d:%02d", lt.tm_hour, lt.tm_min);
-        lv_label_set_text_fmt(s_date, "%02d-%02d %s", lt.tm_mon + 1, lt.tm_mday, WD[lt.tm_wday]);
+        lv_label_set_text_fmt(s_date, "%02d-%02d %s", lt.tm_mon + 1, lt.tm_mday,
+                              ui_text_weekday(lang, lt.tm_wday));
     } else {
         lv_label_set_text(s_clock, "--:--");
-        lv_label_set_text(s_date, "未校时");
+        lv_label_set_text(s_date, ui_text(UI_T_NO_TIME));
     }
+}
+
+// GitHub 布局的 1 秒轮询:数据首次就绪(或从有到无)时整页重建,把热力图画上去
+static void gh_tick(lv_timer_t *t) {
+    (void)t;
+    if (app_github_ready() == s_gh_ready_at_enter) return;
+    demo_badge_exit();
+    demo_badge_enter();
 }
 
 static lv_obj_t *text_line(lv_obj_t *parent, const char *text, const lv_font_t *font,
@@ -93,7 +106,7 @@ static void build_clock(const ui_theme_t *th, int y) {
     lv_obj_t *bar = ui_pixel_panel_create(s_scr, 11, y, 218, 52, th->panel);
     s_clock = ui_pixel_label(bar, "--:--", &lv_font_montserrat_28, th->ink);
     lv_obj_align(s_clock, LV_ALIGN_LEFT_MID, 0, 0);
-    s_date = ui_pixel_label(bar, "未校时", &font_cjk_16, th->muted);
+    s_date = ui_pixel_label(bar, ui_text(UI_T_NO_TIME), &font_cjk_16, th->muted);
     lv_obj_align(s_date, LV_ALIGN_RIGHT_MID, 0, 0);
 }
 
@@ -124,6 +137,15 @@ static void build_card(const app_config_t *cfg, const ui_theme_t *th) {
     build_clock(th, 182);
 }
 
+// 二维码说明文字(居中于各自码的下方)
+static lv_obj_t *qr_caption(const ui_theme_t *th, const char *text, int x) {
+    lv_obj_t *l = ui_pixel_label(s_scr, text, &font_cjk_16, th->ink);
+    lv_obj_set_pos(l, x, 170);
+    lv_obj_set_width(l, 104);
+    lv_obj_set_style_text_align(l, LV_TEXT_ALIGN_CENTER, 0);
+    return l;
+}
+
 static void build_qr(const app_config_t *cfg, const ui_theme_t *th) {
     // 左:链接生成码(门户"二维码内容");右:上传的二维码图(如微信名片)
     bool has = cfg->qr_a[0] != '\0';
@@ -133,10 +155,7 @@ static void build_qr(const app_config_t *cfg, const ui_theme_t *th) {
     lv_qrcode_set_light_color(s_qr, lv_color_hex(0xFFFFFF));
     lv_obj_set_pos(s_qr, 14, 60);
     if (has) lv_qrcode_update(s_qr, cfg->qr_a, strlen(cfg->qr_a));
-    lv_obj_t *l1 = ui_pixel_label(s_scr, "链接", &font_cjk_16, th->ink);
-    lv_obj_set_pos(l1, 14, 170);
-    lv_obj_set_width(l1, 104);
-    lv_obj_set_style_text_align(l1, LV_TEXT_ALIGN_CENTER, 0);
+    qr_caption(th, ui_text(UI_T_QR_LINK), 14);
 
     uint8_t *file = s_page_buf, *dst = s_page_buf + QRIMG_FILE_BYTES;
     int n = s_page_buf ? app_store_read("qr_b.img", file, QRIMG_FILE_BYTES) : -1;
@@ -147,31 +166,30 @@ static void build_qr(const app_config_t *cfg, const ui_theme_t *th) {
                              LV_COLOR_FORMAT_RGB565);
         lv_obj_set_pos(cv, 122, 60);
     } else {
-        lv_obj_t *ph = ui_pixel_label(s_scr, "未上传\n二维码图", &font_cjk_16, th->muted);
+        lv_obj_t *ph = ui_pixel_label(s_scr, ui_text(UI_T_QR_NONE), &font_cjk_16, th->muted);
         lv_obj_set_pos(ph, 154, 96);
     }
-    lv_obj_t *l2 = ui_pixel_label(s_scr, "图片", &font_cjk_16, th->ink);
-    lv_obj_set_pos(l2, 122, 170);
-    lv_obj_set_width(l2, 104);
-    lv_obj_set_style_text_align(l2, LV_TEXT_ALIGN_CENTER, 0);
+    qr_caption(th, ui_text(UI_T_QR_IMG), 122);
 }
 
-static void build_github(const ui_theme_t *th) {
+static void build_github(const app_config_t *cfg, const ui_theme_t *th) {
     lv_obj_t *panel = ui_pixel_panel_create(s_scr, 11, 52, 218, 130, th->panel);
-    lv_obj_t *t1 = ui_pixel_label(panel, "GitHub 热力图", &font_cjk_20, th->ink);
+    lv_obj_t *t1 = ui_pixel_label(panel, ui_text(UI_T_GH_TITLE), &font_cjk_20, th->ink);
     lv_obj_set_pos(t1, 4, 4);
 
     if (!app_github_ready()) {
-        const app_config_t *cfg = app_config_get();
         lv_obj_t *t2 = ui_pixel_label(panel,
-            cfg->gh_user[0] ? "等待网络连接…\n联网后自动拉取提交记录"
-                            : "未配置用户名\n请在门户“GitHub 热力图”中填写",
+            cfg->gh_user[0] ? ui_text(UI_T_GH_WAIT) : ui_text(UI_T_GH_NOUSER),
             &font_cjk_16, th->muted);
         lv_obj_set_pos(t2, 4, 44);
+        lv_obj_t *t3 = ui_pixel_label(panel,
+            cfg->gh_user[0] ? ui_text(UI_T_GH_WAIT_SUB) : ui_text(UI_T_GH_NOUSER_SUB),
+            &font_cjk_16, th->muted);
+        lv_obj_set_pos(t3, 4, 66);
         return;
     }
     if (!s_page_buf) {
-        lv_obj_t *t2 = ui_pixel_label(panel, "内存不足", &font_cjk_16, th->muted);
+        lv_obj_t *t2 = ui_pixel_label(panel, ui_text(UI_T_LOWMEM), &font_cjk_16, th->muted);
         lv_obj_set_pos(t2, 4, 44);
         return;
     }
@@ -198,35 +216,65 @@ static void build_github(const ui_theme_t *th) {
     lv_display_enable_invalidation(disp, true);
     lv_obj_invalidate(cv);
 
-    char total[32];
-    snprintf(total, sizeof(total), "近一年 %d 次提交", app_github_total());
-    lv_obj_t *t3 = ui_pixel_label(panel, total, &font_cjk_16, th->ink);
-    lv_obj_set_pos(t3, 4, 76);
+    lv_obj_t *t4 = ui_pixel_label(panel, "", &font_cjk_16, th->ink);
+    lv_obj_set_pos(t4, 4, 76);
+    lv_label_set_text_fmt(t4, ui_text(UI_T_GH_TOTAL), app_github_total());
+}
+
+static void build_pet(const app_config_t *cfg, const ui_theme_t *th) {
+    lv_obj_t *card = ui_pixel_panel_create(s_scr, 11, 52, 218, 178, th->panel);
+
+    // 大号吉祥物:38x48 像素画,整数倍(2x)transform 缩放保持硬边
+    s_mascot = ui_pixel_mascot_create(card, 79, 26);
+    s_has_mascot = true;
+    lv_obj_set_style_transform_scale(s_mascot, 512, 0);   // 256 = 1.0
+    lv_obj_set_style_transform_pivot_x(s_mascot, 19, 0);
+    lv_obj_set_style_transform_pivot_y(s_mascot, 24, 0);
+
+    lv_obj_t *nm = ui_pixel_label(card, cfg->name, &font_cjk_20, th->ink);
+    lv_obj_set_pos(nm, 0, 98);
+    lv_obj_set_width(nm, 196);
+    lv_obj_set_style_text_align(nm, LV_TEXT_ALIGN_CENTER, 0);
+
+    lv_obj_t *mood = ui_pixel_label(card, ui_text(UI_T_PET_MOOD), &font_cjk_16, th->muted);
+    lv_obj_set_pos(mood, 0, 122);
+    lv_obj_set_width(mood, 196);
+    lv_obj_set_style_text_align(mood, LV_TEXT_ALIGN_CENTER, 0);
+
+    lv_obj_t *soon = ui_pixel_label(card, ui_text(UI_T_PET_SOON), &font_cjk_16, th->muted);
+    lv_obj_set_pos(soon, 0, 144);
+    lv_obj_set_width(soon, 196);
+    lv_obj_set_style_text_align(soon, LV_TEXT_ALIGN_CENTER, 0);
 }
 
 void demo_badge_enter(void) {
     const app_config_t *cfg = app_config_get();
     const ui_theme_t *th = ui_pixel_theme();
     s_has_mascot = false;
+    s_gh_ready_at_enter = app_github_ready();
     s_page_buf = heap_caps_malloc(PAGE_BUF_MAX, MALLOC_CAP_8BIT);   // 失败则各布局降级
     s_scr = ui_pixel_screen_create("BADGE");
 
     switch (cfg->layout) {
     case APP_LAYOUT_QR:     build_qr(cfg, th);     break;
-    case APP_LAYOUT_GITHUB: build_github(th);      break;
+    case APP_LAYOUT_GITHUB: build_github(cfg, th); break;
+    case APP_LAYOUT_PET:    build_pet(cfg, th);    break;
     default:                build_card(cfg, th);   break;
     }
 
-    static const ui_hint_t BADGE_HINTS[] = {
-        { "OK",                          "菜单", false },
-        { LV_SYMBOL_DOWN,                "息屏", true  },
-        { LV_SYMBOL_UP LV_SYMBOL_DOWN,   "布局", false },
+    const ui_hint_t BADGE_HINTS[] = {
+        { "OK",                        ui_text(UI_T_MENU),  false },
+        { LV_SYMBOL_DOWN,              ui_text(UI_T_SLEEP), true  },
+        { LV_SYMBOL_UP LV_SYMBOL_DOWN, ui_text(UI_T_VIEW),  false },
     };
     ui_pixel_hints(s_scr, BADGE_HINTS, 3);
     if (cfg->layout == APP_LAYOUT_CARD) {
-        // 只有名片布局显示时间;二维码/GitHub 布局不建时钟控件,也不需要秒级刷新
+        // 只有名片布局显示时间;其他布局不需要秒级刷新
         clock_tick(NULL);
         s_timer = lv_timer_create(clock_tick, CLOCK_TICK_MS, NULL);
+    } else if (cfg->layout == APP_LAYOUT_GITHUB) {
+        // 联网窗口拉到热力图数据时自动重绘
+        s_timer = lv_timer_create(gh_tick, CLOCK_TICK_MS, NULL);
     }
     lv_screen_load(s_scr);
 }
@@ -253,8 +301,8 @@ void demo_badge_key(bsp_btn_t btn, bsp_btn_ev_t ev) {
     }
     if (ev == BSP_BTN_CLICK && (btn == BSP_BTN_UP || btn == BSP_BTN_DOWN)) {
         app_config_t c = *app_config_get();
-        c.layout = (uint8_t)((c.layout + APP_LAYOUT_COUNT + (btn == BSP_BTN_DOWN ? 1 : -1))
-                             % APP_LAYOUT_COUNT);
+        int dir = (btn == BSP_BTN_DOWN) ? +1 : -1;
+        c.layout = app_config_next_layout(c.layout, c.layout_mask, dir);
         app_config_update(&c);
         demo_badge_exit();
         demo_badge_enter();

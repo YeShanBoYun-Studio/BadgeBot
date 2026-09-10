@@ -5,7 +5,8 @@
 #include "bsp_button.h"
 
 typedef struct {
-    const char *name;
+    const char *name;        // 英文名(设置 lang=1 或未译时显示)
+    const char *name_zh;     // 中文名(lang=0 时显示;可为 NULL 回退英文)
     void (*enter)(void);                          // 建自己的屏并载入
     void (*exit)(void);                           // 删屏、停定时器、释放资源
     void (*key)(bsp_btn_t btn, bsp_btn_ev_t ev);  // 收按键(长按确定已被 main 拦截)

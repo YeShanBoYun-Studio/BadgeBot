@@ -49,6 +49,8 @@ static esp_err_t load(void) {
     get_str (h, "gh",    s_cfg.gh_user, sizeof(s_cfg.gh_user));
     get_bool(h, "hide",  &s_cfg.hide_org_title);
     get_u8  (h, "layout",&s_cfg.layout);
+    get_u8  (h, "laymask",&s_cfg.layout_mask);
+    get_u8  (h, "lang",  &s_cfg.lang);
     get_u8  (h, "theme", &s_cfg.theme);
     get_u8  (h, "bl",    &s_cfg.brightness);
     get_u8  (h, "vol",   &s_cfg.volume);
@@ -77,6 +79,8 @@ static esp_err_t save(const app_config_t *cfg) {
         (e = nvs_set_str(h, "gh",    cfg->gh_user)) == ESP_OK &&
         (e = nvs_set_u8 (h, "hide",  cfg->hide_org_title)) == ESP_OK &&
         (e = nvs_set_u8 (h, "layout",cfg->layout)) == ESP_OK &&
+        (e = nvs_set_u8 (h, "laymask",cfg->layout_mask)) == ESP_OK &&
+        (e = nvs_set_u8 (h, "lang",  cfg->lang)) == ESP_OK &&
         (e = nvs_set_u8 (h, "theme", cfg->theme)) == ESP_OK &&
         (e = nvs_set_u8 (h, "bl",    cfg->brightness)) == ESP_OK &&
         (e = nvs_set_u8 (h, "vol",   cfg->volume)) == ESP_OK &&

@@ -73,7 +73,48 @@ static void test_steps(void)
     assert(strcmp(app_config_layout_name(APP_LAYOUT_CARD), "CARD") == 0);
     assert(strcmp(app_config_layout_name(APP_LAYOUT_QR), "QR") == 0);
     assert(strcmp(app_config_layout_name(APP_LAYOUT_GITHUB), "GITHUB") == 0);
+    assert(strcmp(app_config_layout_name(APP_LAYOUT_PET), "PET") == 0);
     assert(strcmp(app_config_layout_name(APP_LAYOUT_COUNT), "?") == 0);
+}
+
+static void test_layout_mask(void)
+{
+    app_config_t c;
+    app_config_defaults(&c);
+    assert(c.layout_mask == APP_LAYOUT_ALL_MASK);
+    assert(c.lang == 0);
+    assert(!app_config_sanitize(&c));
+
+    // 默认布局被禁用时挪到第一个开启的布局
+    c.layout = APP_LAYOUT_CARD;
+    c.layout_mask = (1 << APP_LAYOUT_QR) | (1 << APP_LAYOUT_PET);
+    assert(app_config_sanitize(&c));
+    assert(c.layout == APP_LAYOUT_QR);
+    assert(!app_config_sanitize(&c));
+
+    // 掩码为空/越界回退为全开
+    c.layout_mask = 0;
+    assert(app_config_sanitize(&c));
+    assert(c.layout_mask == APP_LAYOUT_ALL_MASK);
+    c.layout_mask = 0xFF;
+    assert(app_config_sanitize(&c));
+    assert(c.layout_mask == APP_LAYOUT_ALL_MASK);
+
+    // 非法语言回中文
+    c.lang = 9;
+    assert(app_config_sanitize(&c));
+    assert(c.lang == 0);
+
+    // next_layout:只在掩码允许的布局间循环
+    uint8_t m = (uint8_t)((1 << APP_LAYOUT_CARD) | (1 << APP_LAYOUT_GITHUB));
+    assert(app_config_next_layout(APP_LAYOUT_CARD, m, +1) == APP_LAYOUT_GITHUB);
+    assert(app_config_next_layout(APP_LAYOUT_GITHUB, m, +1) == APP_LAYOUT_CARD);
+    assert(app_config_next_layout(APP_LAYOUT_CARD, m, -1) == APP_LAYOUT_GITHUB);
+    // 当前布局不在掩码内时从头找第一个可用项
+    assert(app_config_next_layout(APP_LAYOUT_PET, m, +1) == APP_LAYOUT_CARD);
+    // 只有自身可用时保持不动
+    assert(app_config_next_layout(APP_LAYOUT_QR, (uint8_t)(1 << APP_LAYOUT_QR), +1)
+           == APP_LAYOUT_QR);
 }
 
 int main(void)
@@ -81,5 +122,6 @@ int main(void)
     test_defaults();
     test_sanitize();
     test_steps();
+    test_layout_mask();
     return 0;
 }

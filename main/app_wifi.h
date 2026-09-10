@@ -31,3 +31,6 @@ uint32_t app_wifi_portal_remaining_ms(void);
 
 // 由门户在 Wi-Fi 凭据保存成功后调用:配网窗口将停留数秒并自动关闭。
 void app_portal_notify_saved(void);
+
+// 由门户在保存 Wi-Fi 后调用:延长配网窗口,让用户继续上传图片/保存资料,直到超时或"完成并联网"。
+void app_wifi_portal_extend(uint32_t ms);

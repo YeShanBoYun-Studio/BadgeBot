@@ -15,6 +15,8 @@ void app_config_defaults(app_config_t *cfg) {
              "https://github.com/YeShanBoYun-Studio/BadgeBot");
     cfg->hide_org_title = true;   // 公司/岗位默认隐藏,门户里可改
     cfg->layout = APP_LAYOUT_CARD;
+    cfg->layout_mask = APP_LAYOUT_ALL_MASK;
+    cfg->lang = 0;                // 中文
     cfg->theme = 0;               // 浅色
     cfg->brightness = APP_CFG_BL_MAX;
     cfg->volume = 60;
@@ -49,6 +51,16 @@ bool app_config_sanitize(app_config_t *cfg) {
         if (!ok) { *p = '\0'; changed = true; break; }
     }
     if (cfg->layout >= APP_LAYOUT_COUNT) { cfg->layout = APP_LAYOUT_CARD; changed = true; }
+    if (cfg->lang > 1) { cfg->lang = 0; changed = true; }
+    if (cfg->layout_mask == 0 || cfg->layout_mask > APP_LAYOUT_ALL_MASK) {
+        cfg->layout_mask = APP_LAYOUT_ALL_MASK;
+        changed = true;
+    }
+    // 默认布局被关掉时,挪到第一个开启的布局,避免开机进入一个被禁用的页面
+    if (!(cfg->layout_mask & (1 << cfg->layout))) {
+        cfg->layout = app_config_next_layout(cfg->layout, cfg->layout_mask, +1);
+        changed = true;
+    }
     if (cfg->theme > 1) { cfg->theme = 0; changed = true; }
     changed |= clamp_u8(&cfg->brightness, APP_CFG_BL_MIN, APP_CFG_BL_MAX);
     changed |= clamp_u8(&cfg->volume, 0, APP_CFG_VOL_MAX);
@@ -87,11 +99,28 @@ uint8_t app_config_step_screen_off(uint8_t cur, int dir) {
     return OFF_STEPS[idx];
 }
 
+uint8_t app_config_next_layout(uint8_t cur, uint8_t mask, int dir) {
+    if (cur >= APP_LAYOUT_COUNT) cur = APP_LAYOUT_CARD;
+    if (!(mask & (1 << cur))) {           // 当前布局被禁用:回第一个可用项
+        for (uint8_t i = 0; i < APP_LAYOUT_COUNT; i++) {
+            if (mask & (1 << i)) return i;
+        }
+        return cur;                       // 掩码为空(上游应已兜底为全开)
+    }
+    for (int i = 1; i <= APP_LAYOUT_COUNT; i++) {
+        uint8_t cand = (uint8_t)((cur + APP_LAYOUT_COUNT + (dir >= 0 ? i : APP_LAYOUT_COUNT - i))
+                                 % APP_LAYOUT_COUNT);
+        if (mask & (1 << cand)) return cand;
+    }
+    return cur;                           // 只有自身可用
+}
+
 const char *app_config_layout_name(uint8_t layout) {
     switch (layout) {
     case APP_LAYOUT_CARD:   return "CARD";
     case APP_LAYOUT_QR:     return "QR";
     case APP_LAYOUT_GITHUB: return "GITHUB";
+    case APP_LAYOUT_PET:    return "PET";
     default:                return "?";
     }
 }

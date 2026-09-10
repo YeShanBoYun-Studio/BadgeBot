@@ -8,6 +8,7 @@ idf_component_register(
          "app_store.c"
          "app_wifi.c"
          "ui_pixel.c"
+         "ui_text.c"
          "ui_pixel_math.c"
          "fonts/font_cjk_20.c"
          "fonts/font_cjk_16.c"

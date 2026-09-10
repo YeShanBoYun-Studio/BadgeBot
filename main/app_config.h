@@ -22,8 +22,11 @@ typedef enum {
     APP_LAYOUT_CARD = 0,          // A:名片(时间/头像/姓名/岗位/电量)
     APP_LAYOUT_QR,                // B:双二维码
     APP_LAYOUT_GITHUB,            // C:GitHub 热力图
+    APP_LAYOUT_PET,               // D:宠物卡片(养成系统 M7 逐步丰富)
     APP_LAYOUT_COUNT,
 } app_layout_t;
+
+#define APP_LAYOUT_ALL_MASK ((1 << APP_LAYOUT_COUNT) - 1)   // 全部布局开启
 
 typedef struct {
     char    name[APP_CFG_STR_LEN];
@@ -32,7 +35,9 @@ typedef struct {
     char    qr_a[APP_CFG_QR_LEN]; // 二维码槽 A:链接或文本,设备端生成二维码
     char    gh_user[APP_CFG_GH_LEN]; // GitHub 用户名(热力图数据源)
     bool    hide_org_title;       // 主页不显示公司/岗位(默认隐藏)
-    uint8_t layout;               // app_layout_t
+    uint8_t layout;               // app_layout_t,开机默认布局
+    uint8_t layout_mask;          // 布局开关位掩码,bit n = APP_LAYOUT_n;主页 ▲/▼ 只在开启的布局间切换
+    uint8_t lang;                 // 界面语言:0 = 中文,1 = English
     uint8_t theme;                // 0 = 浅色,1 = 深色;换主题后新屏生效
     uint8_t brightness;           // APP_CFG_BL_MIN..APP_CFG_BL_MAX
     uint8_t volume;               // 0..APP_CFG_VOL_MAX
@@ -48,6 +53,8 @@ bool    app_config_sanitize(app_config_t *cfg);
 uint8_t app_config_step_brightness(uint8_t cur, int dir);
 uint8_t app_config_step_volume(uint8_t cur, int dir);
 uint8_t app_config_step_screen_off(uint8_t cur, int dir);
+// 在 layout_mask 允许的布局中从 cur 出发步进(dir=+1 下一个);无可用布局时返回 cur。
+uint8_t app_config_next_layout(uint8_t cur, uint8_t mask, int dir);
 const char *app_config_layout_name(uint8_t layout);
 
 // ---- 目标端(app_config.c) ----
