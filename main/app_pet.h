@@ -76,4 +76,5 @@ bool app_pet_initialized(void);
 // 生蛋并持久化(仅在 !app_pet_initialized() 时有效)。
 void app_pet_birth(uint32_t now);
 void app_pet_save(void);                       // 把当前状态写回 NVS
+void app_pet_reset(void);                      // 清空宠物(内存;NVS 由恢复出厂统一擦除)
 #endif

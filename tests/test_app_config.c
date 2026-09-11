@@ -17,7 +17,12 @@ static void test_defaults(void)
     assert(c.hide_org_title);                  // 公司/岗位默认隐藏
     assert(strcmp(c.name, "BadgeBot") == 0);   // 默认名不绑定任何用户身份
     assert(c.org[0] == '\0' && c.title[0] == '\0');
-    assert(c.qr_a[0] != '\0');                 // 二维码槽 A 有可演示的默认内容
+    assert(c.qr_text[0][0] != '\0');           // 槽 1 有可演示的默认内容,其余槽留空
+    for (int i = 1; i < APP_CFG_QR_SLOTS; i++) {
+        assert(c.qr_text[i][0] == '\0');
+        assert(c.qr_label[i][0] == '\0');
+    }
+    assert(c.qr_mode == 0);                    // 默认全部为"网页生成"
     assert(!app_config_sanitize(&c));          // 默认值本身必须合法
 }
 
@@ -44,6 +49,18 @@ static void test_sanitize(void)
     c.brightness = 0;                            // 越下界:不能让屏幕全黑
     assert(app_config_sanitize(&c));
     assert(c.brightness == APP_CFG_BL_MIN);
+
+    // 二维码 4 槽:qr_mode 位图越界回退为全"网页生成",字符串保证 NUL 结尾
+    app_config_defaults(&c);
+    c.qr_mode = 0xFF;
+    memset(c.qr_text[0], 'B', sizeof(c.qr_text[0]));
+    memset(c.qr_label[3], 'C', sizeof(c.qr_label[3]));
+    assert(app_config_sanitize(&c));
+    assert(c.qr_mode == 0);
+    assert(c.qr_text[0][APP_CFG_QR_LEN - 1] == '\0');
+    assert(strlen(c.qr_text[0]) == APP_CFG_QR_LEN - 1);
+    assert(c.qr_label[3][APP_CFG_QRLBL_LEN - 1] == '\0');
+    assert(strlen(c.qr_label[3]) == APP_CFG_QRLBL_LEN - 1);
 }
 
 static void test_steps(void)

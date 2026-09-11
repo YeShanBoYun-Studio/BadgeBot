@@ -43,6 +43,13 @@ void app_pet_birth(uint32_t now)
     ESP_LOGI(TAG, "生蛋!孵化倒计时 2 分钟");
 }
 
+void app_pet_reset(void)
+{
+    s_pet.hatch_epoch = UINT32_MAX;
+    memset(&s_pet, 0, sizeof(s_pet));
+    s_pet.hatch_epoch = UINT32_MAX;              // 恢复出厂后回到"未开始养"
+}
+
 void app_pet_save(void)
 {
     nvs_handle_t h;

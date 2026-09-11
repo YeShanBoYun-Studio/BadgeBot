@@ -2,10 +2,11 @@
 //
 // 页面是手机浏览器打开的 http://192.168.4.1;接口:
 //   GET  /api/config  当前配置(不含 Wi-Fi 密码;附带热点剩余毫秒数,页面心跳用)
-//   POST /api/config  保存名片资料(name/org/title/hide/qr_a/lang)
+//   POST /api/config  保存名片资料(name/org/title/hide/qr_text[4]/qr_label[4]/qr_mode/lang)
 //   POST /api/wifi    保存 STA 凭据(写入 NVS 并延长热点窗口,让用户继续上传)
 //   POST /api/avatar  头像(96x96 RGB565 原始字节,body 为 0 清除)
-//   POST /api/qrimg   二维码图(128x128 1bpp,body 为 0 清除)
+//   POST /api/qr0..3  二维码槽 0..3 的上传图(128x128 1bpp,body 为 0 清除);
+//                     每槽内容来源由 qr_mode 位图选择:bit n = 1 用上传图,0 用网页生成文本
 //   POST /api/done    用户点"完成并联网":数秒后关热点并立即联网校时
 // 图片由页面 JS 裁剪:默认居中正方形选区,可拖动/缩放;固件不做图片解码。
 // 注意:store 分区曾因 FATFS 长文件名未启用(CONFIG_FATFS_LFN_NONE)导致
@@ -44,6 +45,8 @@ static const char PORTAL_HTML[] =
 "button.done{width:100%;margin-top:12px;background:#2ea043;color:#fff}"
 "span{margin-left:8px;font-size:14px;color:#7ce38b}"
 ".chk{display:flex;align-items:center;gap:8px;margin:8px 0}.chk input{width:auto}"
+".slott{margin-top:12px;padding-top:6px;border-top:1px dashed #2a323c;"
+"font-weight:700;font-size:13px}"
 ".top{display:flex;justify-content:space-between;align-items:center}"
 ".hint{color:#93a3b0;font-size:13px;margin-top:14px}"
 "#beat{font-size:13px;margin-top:10px;color:#7ce38b}"
@@ -65,16 +68,16 @@ static const char PORTAL_HTML[] =
 "<label id='l_org'>公司</label><input id='borg'>"
 "<label id='l_title'>岗位</label><input id='btitle'>"
 "<div class='chk'><input id='bhide' type='checkbox'><label id='l_hide' for='bhide'>隐藏公司/岗位</label></div>"
-"<label id='l_qra'>二维码内容(链接或文本)</label><input id='bqr'>"
 "<button id='b_savecard' onclick='saveCfg()'>保存名片</button><span id='cm'></span>"
+"</fieldset>"
+"<fieldset><legend id='l_qrs'>二维码(4 槽,每槽可选 网页生成 或 上传图片)</legend>"
+"<div id='qrs'></div>"
+"<button id='b_saveqr' onclick='saveQr()'>保存二维码设置</button><span id='qrm'></span>"
 "</fieldset>"
 "<fieldset><legend id='l_img'>图片(手动裁剪为正方形)</legend>"
 "<label id='l_avatar'>头像(输出 96x96)</label><input type='file' id='fav' accept='image/*'>"
 "<button id='b_upav' onclick=\"openCrop(fid('fav').files[0],'/api/avatar',96,'rgb565',fid('am'))\">裁剪并上传头像</button>"
 "<button id='b_clr1' class='minor' onclick=\"clr('/api/avatar',fid('am'))\">清除</button><span id='am'></span>"
-"<label id='l_qrimg'>二维码图(微信等,输出 128x128 黑白)</label><input type='file' id='fqr' accept='image/*'>"
-"<button id='b_upqr' onclick=\"openCrop(fid('fqr').files[0],'/api/qrimg',128,'bw',fid('qm'))\">裁剪并上传二维码图</button>"
-"<button id='b_clr2' class='minor' onclick=\"clr('/api/qrimg',fid('qm'))\">清除</button><span id='qm'></span>"
 "<div id='crop' style='display:none;margin-top:10px'>"
 "<label id='l_crop'>拖动虚线框选裁剪区;右下角手柄缩放(默认居中)</label>"
 "<div id='cwrap'><img id='cimg'><div id='cbox'>"
@@ -89,20 +92,20 @@ static const char PORTAL_HTML[] =
 "var LANG=0;"
 "var D={"
 "zh:{wifi:'Wi-Fi(仅支持 2.4GHz)',ssid:'SSID',pass:'密码',savewifi:'保存 Wi-Fi',"
-"card:'名片',name:'姓名',org:'公司',title:'岗位',hide:'隐藏公司/岗位',"
-"qra:'二维码内容(链接或文本)',savecard:'保存名片',"
+"card:'名片',name:'姓名',org:'公司',title:'岗位',hide:'隐藏公司/岗位',savecard:'保存名片',"
+"qrs:'二维码(4 槽,每槽可选 网页生成 或 上传图片)',ql:'槽位说明(如:微信)',"
+"qg:'网页生成',qu:'上传图片',qph:'链接或文本',upq:'裁剪并上传',saveqr:'保存二维码设置',"
 "img:'图片(手动裁剪为正方形)',avatar:'头像(输出 96x96)',upav:'裁剪并上传头像',clr:'清除',"
-"qrimg:'二维码图(微信等,输出 128x128 黑白)',upqr:'裁剪并上传二维码图',"
 "crop:'拖动虚线框选裁剪区;右下角手柄缩放(默认居中)',ok:'确认上传',cancel:'取消',"
 "done:'完成并联网',pick:'请先选择图片',dec:'图片解码失败,请换 JPG/PNG 试',"
 "proc:'处理中…',uping:'上传中…',net:'网络错误(热点可能已关闭)',"
 "alive:'热点在线 · 剩余约 ',unit:' 秒',dead:'设备不可达:热点可能已关闭,请在工牌重新进入配网后刷新本页',"
 "hint:'保存 Wi-Fi 后热点保持开启;完成所有修改后点「完成并联网」,工牌会关闭热点并立即联网校时。'},"
 "en:{wifi:'Wi-Fi (2.4GHz only)',ssid:'SSID',pass:'Password',savewifi:'Save Wi-Fi',"
-"card:'Card',name:'Name',org:'Company',title:'Title',hide:'Hide company/title',"
-"qra:'QR content (link or text)',savecard:'Save card',"
+"card:'Card',name:'Name',org:'Company',title:'Title',hide:'Hide company/title',savecard:'Save card',"
+"qrs:'QR codes (4 slots; each: generated or uploaded image)',ql:'Caption (e.g. WeChat)',"
+"qg:'Generated',qu:'Uploaded image',qph:'Link or text',upq:'Crop && upload',saveqr:'Save QR setup',"
 "img:'Images (manual square crop)',avatar:'Avatar (96x96 out)',upav:'Crop && upload avatar',clr:'Clear',"
-"qrimg:'QR image (WeChat etc., 128x128 B/W)',upqr:'Crop && upload QR image',"
 "crop:'Drag the dashed box to crop; corner handle resizes (centered by default)',ok:'Upload',cancel:'Cancel',"
 "done:'Finish && connect',pick:'Pick an image first',dec:'Decode failed, try JPG/PNG',"
 "proc:'Working…',uping:'Uploading…',net:'Network error (hotspot may be closed)',"
@@ -118,12 +121,15 @@ static const char PORTAL_HTML[] =
 "fid('l_pass').textContent=T('pass');fid('b_savewifi').textContent=T('savewifi');"
 "fid('l_card').textContent=T('card');fid('l_name').textContent=T('name');"
 "fid('l_org').textContent=T('org');fid('l_title').textContent=T('title');"
-"fid('l_hide').textContent=T('hide');fid('l_qra').textContent=T('qra');"
+"fid('l_hide').textContent=T('hide');"
 "fid('b_savecard').textContent=T('savecard');"
+"fid('l_qrs').textContent=T('qrs');fid('b_saveqr').textContent=T('saveqr');"
+"for(var i=0;i<4;i++){fid('l_ql'+i).textContent=T('ql');"
+"fid('l_qg'+i).textContent=T('qg');fid('l_qu'+i).textContent=T('qu');"
+"fid('qt'+i).placeholder=T('qph');"
+"fid('b_upq'+i).textContent=T('upq');fid('b_clrq'+i).textContent=T('clr')}"
 "fid('l_img').textContent=T('img');fid('l_avatar').textContent=T('avatar');"
 "fid('b_upav').textContent=T('upav');fid('b_clr1').textContent=T('clr');"
-"fid('l_qrimg').textContent=T('qrimg');fid('b_upqr').textContent=T('upqr');"
-"fid('b_clr2').textContent=T('clr');"
 "fid('l_crop').textContent=T('crop');fid('b_cropok').textContent=T('ok');"
 "fid('b_cancel').textContent=T('cancel');"
 "fid('b_done').textContent=T('done');"
@@ -135,7 +141,36 @@ static const char PORTAL_HTML[] =
 ".then(function(t){msg(m,t,true)}).catch(function(e){msg(m,T('net'),false)})}"
 "function saveWifi(){sv('/api/wifi',{ssid:fid('ssid').value,pass:fid('pass').value},fid('wm'))}"
 "function saveCfg(){sv('/api/config',{name:fid('bname').value,org:fid('borg').value,"
-"title:fid('btitle').value,hide:fid('bhide').checked,qr_a:fid('bqr').value},fid('cm'))}"
+"title:fid('btitle').value,hide:fid('bhide').checked},fid('cm'))}"
+"/* ---- 二维码 4 槽:每槽独立选择 生成(文本) 或 上传图片;HTML 无引号写法省转义 ---- */"
+"function qmode(i){var up=fid('qu'+i).checked;"
+"fid('qt'+i).style.display=up?'none':'block';"
+"fid('fq'+i).style.display=up?'block':'none';"
+"fid('b_upq'+i).style.display=up?'inline-block':'none';"
+"fid('b_clrq'+i).style.display=up?'inline-block':'none'}"
+"function buildQr(){var h='';"
+"for(var i=0;i<4;i++){"
+"h+=\'<div class=slott>QR\'+(i+1)+\'</div>\'"
+"\'<label id=l_ql\'+i+\'></label><input id=ql\'+i+\' maxlength=23>\'"
+"\'<div class=chk><input type=radio name=qm\'+i+\' id=qg\'+i+\'><label id=l_qg\'+i+\' for=qg\'+i+\'></label>\'"
+"\'<input type=radio name=qm\'+i+\' id=qu\'+i+\'><label id=l_qu\'+i+\' for=qu\'+i+\'></label></div>\'"
+"\'<input id=qt\'+i+\'>\'"
+"\'<input type=file id=fq\'+i+\' accept=image/*>\'"
+"\'<button id=b_upq\'+i+\' class=minor></button>\'"
+"\'<button id=b_clrq\'+i+\' class=minor></button><span id=q\'+i+\'m></span>\';"
+"}fid('qrs').innerHTML=h;"
+"for(var i=0;i<4;i++){(function(i){"
+"fid('qg'+i).addEventListener('change',function(){qmode(i)});"
+"fid('qu'+i).addEventListener('change',function(){qmode(i)});"
+"fid('b_upq'+i).addEventListener('click',function(){"
+"openCrop(fid('fq'+i).files[0],'/api/qr'+i,128,'bw',fid('q'+i+'m'))});"
+"fid('b_clrq'+i).addEventListener('click',function(){clr('/api/qr'+i,fid('q'+i+'m'))});"
+"})(i)}}"
+"function saveQr(){var b={qr_text:[],qr_label:[],qr_mode:0};"
+"for(var i=0;i<4;i++){b.qr_text.push(fid('qt'+i).value);"
+"b.qr_label.push(fid('ql'+i).value);"
+"if(fid('qu'+i).checked)b.qr_mode|=(1<<i)}"
+"sv('/api/config',b,fid('qrm'))}"
 "function finish(){sv('/api/done',{},fid('dm'))}"
 "function clr(u,m){msg(m,T('proc'),true);"
 "fetch(u,{method:'POST'}).then(function(r){return r.text()})"
@@ -194,10 +229,14 @@ static const char PORTAL_HTML[] =
 "fid('beat').textContent=T('alive')+s+T('unit');fid('beat').style.color='#7ce38b'})"
 ".catch(function(){fid('beat').textContent=T('dead');fid('beat').style.color='#ff6b6b'})}"
 "setInterval(beat,10000);"
+"buildQr();"
 "fetch('/api/config').then(function(r){return r.json()}).then(function(c){"
 "fid('ssid').value=c.sta_ssid||'';fid('bname').value=c.name||'';"
 "fid('borg').value=c.org||'';fid('btitle').value=c.title||'';"
-"fid('bhide').checked=!!c.hide;fid('bqr').value=c.qr_a||'';"
+"fid('bhide').checked=!!c.hide;"
+"for(var i=0;i<4;i++){fid('qt'+i).value=(c.qr_text||[])[i]||'';"
+"fid('ql'+i).value=(c.qr_label||[])[i]||'';"
+"var up=((c.qr_mode||0)>>i)&1;fid('qg'+i).checked=!up;fid('qu'+i).checked=up;qmode(i)}"
 "LANG=c.lang?1:0;applyLang()}).then(beat).catch(function(){applyLang();beat()});"
 "</script></body></html>";
 
@@ -225,7 +264,13 @@ static esp_err_t get_config(httpd_req_t *req)
     cJSON_AddStringToObject(j, "name", c->name);
     cJSON_AddStringToObject(j, "org", c->org);
     cJSON_AddStringToObject(j, "title", c->title);
-    cJSON_AddStringToObject(j, "qr_a", c->qr_a);
+    cJSON *qt = cJSON_AddArrayToObject(j, "qr_text");
+    cJSON *ql = cJSON_AddArrayToObject(j, "qr_label");
+    for (int i = 0; i < APP_CFG_QR_SLOTS; i++) {
+        cJSON_AddItemToArray(qt, cJSON_CreateString(c->qr_text[i]));
+        cJSON_AddItemToArray(ql, cJSON_CreateString(c->qr_label[i]));
+    }
+    cJSON_AddNumberToObject(j, "qr_mode", c->qr_mode);
     cJSON_AddBoolToObject(j, "hide", c->hide_org_title);
     cJSON_AddNumberToObject(j, "layout", c->layout);
     cJSON_AddNumberToObject(j, "theme", c->theme);
@@ -271,8 +316,24 @@ static esp_err_t post_config(httpd_req_t *req)
         strlcpy(c.org, item->valuestring, sizeof(c.org));
     if ((item = cJSON_GetObjectItem(j, "title")) && cJSON_IsString(item))
         strlcpy(c.title, item->valuestring, sizeof(c.title));
-    if ((item = cJSON_GetObjectItem(j, "qr_a"))  && cJSON_IsString(item))
-        strlcpy(c.qr_a, item->valuestring, sizeof(c.qr_a));
+    cJSON *qt = cJSON_GetObjectItem(j, "qr_text");
+    cJSON *ql = cJSON_GetObjectItem(j, "qr_label");
+    if (cJSON_IsArray(qt)) {
+        for (int i = 0; i < APP_CFG_QR_SLOTS; i++) {
+            cJSON *s = cJSON_GetArrayItem(qt, i);
+            if (cJSON_IsString(s))
+                strlcpy(c.qr_text[i], s->valuestring, sizeof(c.qr_text[i]));
+        }
+    }
+    if (cJSON_IsArray(ql)) {
+        for (int i = 0; i < APP_CFG_QR_SLOTS; i++) {
+            cJSON *s = cJSON_GetArrayItem(ql, i);
+            if (cJSON_IsString(s))
+                strlcpy(c.qr_label[i], s->valuestring, sizeof(c.qr_label[i]));
+        }
+    }
+    if ((item = cJSON_GetObjectItem(j, "qr_mode")) && cJSON_IsNumber(item))
+        c.qr_mode = (uint8_t)(item->valueint & 0x0F);
     if ((item = cJSON_GetObjectItem(j, "hide"))  && cJSON_IsBool(item))
         c.hide_org_title = cJSON_IsTrue(item);
     if ((item = cJSON_GetObjectItem(j, "lang"))  && cJSON_IsNumber(item))
@@ -374,10 +435,11 @@ static esp_err_t post_avatar(httpd_req_t *req)
     return upload_asset(req, "avatar.rgb565", 96 * 96 * 2);
 }
 
-static esp_err_t post_qrimg(httpd_req_t *req)
-{
-    return upload_asset(req, "qr_b.img", 128 * 128 / 8);
-}
+// 槽 0..3 的上传图共用同一处理:文件名 qr0.img..qr3.img,128x128 1bpp = 2048 字节
+static esp_err_t post_qr0(httpd_req_t *req) { return upload_asset(req, "qr0.img", 128 * 128 / 8); }
+static esp_err_t post_qr1(httpd_req_t *req) { return upload_asset(req, "qr1.img", 128 * 128 / 8); }
+static esp_err_t post_qr2(httpd_req_t *req) { return upload_asset(req, "qr2.img", 128 * 128 / 8); }
+static esp_err_t post_qr3(httpd_req_t *req) { return upload_asset(req, "qr3.img", 128 * 128 / 8); }
 
 static const httpd_uri_t URIS[] = {
     { .uri = "/",          .method = HTTP_GET,  .handler = get_index  },
@@ -386,7 +448,10 @@ static const httpd_uri_t URIS[] = {
     { .uri = "/api/wifi",  .method = HTTP_POST, .handler = post_wifi  },
     { .uri = "/api/done",  .method = HTTP_POST, .handler = post_done  },
     { .uri = "/api/avatar",.method = HTTP_POST, .handler = post_avatar},
-    { .uri = "/api/qrimg", .method = HTTP_POST, .handler = post_qrimg },
+    { .uri = "/api/qr0",   .method = HTTP_POST, .handler = post_qr0   },
+    { .uri = "/api/qr1",   .method = HTTP_POST, .handler = post_qr1   },
+    { .uri = "/api/qr2",   .method = HTTP_POST, .handler = post_qr2   },
+    { .uri = "/api/qr3",   .method = HTTP_POST, .handler = post_qr3   },
 };
 
 static httpd_handle_t s_server;

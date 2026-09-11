@@ -9,6 +9,7 @@
 #include "nvs_flash.h"
 #include "nvs.h"
 #include "esp_log.h"
+#include <stdio.h>
 #include <string.h>
 
 static const char *TAG = "app_cfg";
@@ -45,7 +46,26 @@ static esp_err_t load(void) {
     get_str (h, "name",  s_cfg.name,  sizeof(s_cfg.name));
     get_str (h, "org",   s_cfg.org,   sizeof(s_cfg.org));
     get_str (h, "title", s_cfg.title, sizeof(s_cfg.title));
-    get_str (h, "qr_a",  s_cfg.qr_a,  sizeof(s_cfg.qr_a));
+    for (int i = 0; i < APP_CFG_QR_SLOTS; i++) {
+        char key[8];
+        snprintf(key, sizeof(key), "qr%d", i);
+        get_str(h, key, s_cfg.qr_text[i], sizeof(s_cfg.qr_text[i]));
+        snprintf(key, sizeof(key), "ql%d", i);
+        get_str(h, key, s_cfg.qr_label[i], sizeof(s_cfg.qr_label[i]));
+    }
+    get_u8  (h, "qrmask", &s_cfg.qr_mode);
+    // 旧版单槽迁移:qr0 缺失且存在旧 qr_a 时继承为槽 0
+    {
+        char probe[8] = { 0 };
+        size_t n = sizeof(probe);
+        if (nvs_get_str(h, "qr0", probe, &n) != ESP_OK) {
+            char legacy[APP_CFG_QR_LEN] = { 0 };
+            n = sizeof(legacy);
+            if (nvs_get_str(h, "qr_a", legacy, &n) == ESP_OK && legacy[0]) {
+                strlcpy(s_cfg.qr_text[0], legacy, sizeof(s_cfg.qr_text[0]));
+            }
+        }
+    }
     get_bool(h, "hide",  &s_cfg.hide_org_title);
     get_u8  (h, "layout",&s_cfg.layout);
     get_u8  (h, "laymask",&s_cfg.layout_mask);
@@ -74,7 +94,15 @@ static esp_err_t save(const app_config_t *cfg) {
     if ((e = nvs_set_str(h, "name",  cfg->name))  == ESP_OK &&
         (e = nvs_set_str(h, "org",   cfg->org))   == ESP_OK &&
         (e = nvs_set_str(h, "title", cfg->title)) == ESP_OK &&
-        (e = nvs_set_str(h, "qr_a",  cfg->qr_a))  == ESP_OK &&
+        (e = nvs_set_str(h, "qr0",  cfg->qr_text[0])) == ESP_OK &&
+        (e = nvs_set_str(h, "qr1",  cfg->qr_text[1])) == ESP_OK &&
+        (e = nvs_set_str(h, "qr2",  cfg->qr_text[2])) == ESP_OK &&
+        (e = nvs_set_str(h, "qr3",  cfg->qr_text[3])) == ESP_OK &&
+        (e = nvs_set_str(h, "ql0",  cfg->qr_label[0])) == ESP_OK &&
+        (e = nvs_set_str(h, "ql1",  cfg->qr_label[1])) == ESP_OK &&
+        (e = nvs_set_str(h, "ql2",  cfg->qr_label[2])) == ESP_OK &&
+        (e = nvs_set_str(h, "ql3",  cfg->qr_label[3])) == ESP_OK &&
+        (e = nvs_set_u8 (h, "qrmask", cfg->qr_mode)) == ESP_OK &&
         (e = nvs_set_u8 (h, "hide",  cfg->hide_org_title)) == ESP_OK &&
         (e = nvs_set_u8 (h, "layout",cfg->layout)) == ESP_OK &&
         (e = nvs_set_u8 (h, "laymask",cfg->layout_mask)) == ESP_OK &&
@@ -118,6 +146,23 @@ const app_config_t *app_config_get(void) {
 void app_config_apply(void) {
     bsp_display_backlight(s_cfg.brightness);
     bsp_audio_set_volume(s_cfg.volume);
+}
+
+// 恢复出厂:擦除应用命名空间(配置+宠物),回到默认值并立即生效。
+// 注意:上传的头像/二维码图在 store 分区,由调用方另行删除。
+void app_config_factory_reset(void)
+{
+    nvs_handle_t h;
+    if (s_nvs_ready && nvs_open(NVS_NS, NVS_READWRITE, &h) == ESP_OK) {
+        esp_err_t e = nvs_erase_all(h);
+        nvs_commit(h);
+        nvs_close(h);
+        if (e != ESP_OK) ESP_LOGW(TAG, "擦除配置失败(%s),仅恢复默认值", esp_err_to_name(e));
+    }
+    app_config_defaults(&s_cfg);
+    app_config_apply();
+    save(&s_cfg);
+    ESP_LOGW(TAG, "已恢复出厂设置");
 }
 
 esp_err_t app_config_update(const app_config_t *cfg) {

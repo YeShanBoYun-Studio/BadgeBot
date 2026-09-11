@@ -172,6 +172,11 @@ static bool page_manages_backlight(void) {
     return s_active == DEMO_DISPLAY || s_active == DEMO_LOW_POWER;
 }
 
+// 宠物页用 OK 长按切换"动作模式",不作为统一返回
+static bool page_uses_ok_long(void) {
+    return s_active == DEMO_BADGE && app_config_get()->layout == APP_LAYOUT_PET;
+}
+
 static void screen_off(void) {
     if (s_screen_off) return;
     bsp_display_backlight(0);
@@ -220,8 +225,8 @@ static void on_key(bsp_btn_t btn, bsp_btn_ev_t ev, void *user) {
     }
 
     if (s_active >= 0) {
-        if (btn == BSP_BTN_OK && ev == BSP_BTN_LONG) {     // 统一返回
-            ESP_LOGI(TAG, "OK 长按 -> 返回菜单");
+        if (btn == BSP_BTN_OK && ev == BSP_BTN_LONG && !page_uses_ok_long()) {
+            ESP_LOGI(TAG, "OK 长按 -> 返回菜单");          // 统一返回
             demo_request_menu();
         } else {
             DEMOS[s_active].key(btn, ev);

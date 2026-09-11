@@ -26,7 +26,8 @@ extern "C" {
     X(ROW_THEME,    "主题",                  "Theme") \
     X(ROW_OFF,      "自动息屏",              "Auto off") \
     X(ROW_BOOT,     "开机页面",              "Boot page") \
-    X(ROW_ABOUT,    "固件版本",              "Firmware") \
+    X(ROW_RESET,    "恢复出厂",              "Factory reset") \
+    X(RESET_ARM,    "再按OK确认",            "Press OK again") \
     X(LAY_CARD,     "名片",                  "Card") \
     X(LAY_QR,       "二维码",                "QR codes") \
     X(LAY_PET,      "宠物",                  "Pet") \
@@ -41,9 +42,7 @@ extern "C" {
     X(LANG_ZH,      "中文",                  "中文") \
     X(LANG_EN,      "English",               "English") \
     X(NO_TIME,      "未校时",                "No time") \
-    X(QR_LINK,      "链接",                  "Link") \
-    X(QR_IMG,       "图片",                  "Photo") \
-    X(QR_NONE,      "未上传\n二维码图",      "No QR\nimage") \
+    X(QR_UNSET,     "未配置",                "Not set") \
     X(ST_HUNGER,    "饱食",                  "Food") \
     X(ST_FUN,       "心情",                  "Fun") \
     X(ST_CLEAN,     "清洁",                  "Clean") \
@@ -62,7 +61,6 @@ extern "C" {
     X(PET_HATCH,     "孵化中…",              "Hatching…") \
     X(PET_AGE_FMT,   "%d天%d时",             "%dd %dh") \
     X(PET_WT_FMT,    "体重 %dg",             "Weight %dg") \
-    X(ACT_FMT,       "动作:%s",              "Action: %s") \
     X(ACT_FEED,      "喂食",                 "Feed") \
     X(ACT_PLAY,      "玩耍",                 "Play") \
     X(ACT_CLEAN,     "清洁",                 "Clean") \

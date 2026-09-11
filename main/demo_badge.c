@@ -1,12 +1,14 @@
 // main/demo_badge.c —— 工牌主页,三套布局,上/下短按循环切换(只经过设置里开启的布局):
 //   A 名片  头像(门户上传,缺省为吉祥物)+姓名/公司/岗位(默认隐藏)+时间
-//   B 二维码 左=链接生成码(门户"二维码内容"),右=上传的二维码图(如微信),带文字标识
+//   B 二维码 2x2 四槽,每槽可自由选"网页生成"(门户填文本)或"上传图片",
+//           槽下有文字标识(门户填,缺省 QR1..QR4)
 //   C 宠物  黑白像素宠物机(拓麻歌子式):蛋孵化→幼年→少年→成年,
 //           饱食/心情/清洁/精力随时间衰减,便便要清理,睡觉回精力;
-//           ▲/▼ 选动作(喂食/玩耍/清洁/睡觉),OK 执行;离线时长也会结算(NVS)
+//           离线时长也会结算(NVS)
 // 电量/音量/Wi-Fi 在每屏共用的顶部状态栏;自动息屏由 main.c 统一处理。
-// 按键:OK 短按 = 打开菜单(宠物页内 = 执行动作);▼ 长按 = 立即息屏。
-// 上传图片统一由门户 JS 居中裁成正方形:头像 96x96,二维码图 128x128 黑白。
+// 按键:▼ 长按 = 立即息屏;宠物页 OK 长按 = 进/出动作模式,动作模式下 ▲/▼ 选动作、
+//       OK 短按执行;普通模式 ▲/▼ 切布局、OK 短按开菜单。
+// 上传图片统一由门户 JS 居中裁成正方形:头像 96x96,二维码图 128x128 黑白(四槽)。
 #include "demo.h"
 #include "app_clock.h"
 #include "app_config.h"
@@ -27,7 +29,8 @@
 #define AVATAR_SRC    96       // 门户上传原图边长(RGB565 LE)
 #define AVATAR_SHOW   64       // 名片头像显示边长(最近邻缩小)
 #define QRIMG_SRC     128      // 门户上传 1bpp 位图边长
-#define QRIMG_SHOW    104      // 与左侧生成码同宽
+#define QR_SHOW       96       // 二维码槽显示边长(2x2 四槽)
+#define QR_A8_BYTES   (QR_SHOW * QR_SHOW)   // A8 透明度画布,上传图每槽一份
 
 static lv_obj_t *s_scr;
 static lv_obj_t *s_name, *s_org, *s_title;
@@ -43,7 +46,7 @@ static bool s_has_mascot;
 #define AVATAR_SRC_BYTES (AVATAR_SRC * AVATAR_SRC * 2)
 #define AVATAR_DST_BYTES (AVATAR_SHOW * AVATAR_SHOW * 2)
 #define QRIMG_FILE_BYTES (QRIMG_SRC * QRIMG_SRC / 8)
-#define QRIMG_DST_BYTES  (QRIMG_SHOW * QRIMG_SHOW * 2)
+#define QR_PAGE_BYTES    (QRIMG_FILE_BYTES + 4 * QR_A8_BYTES)
 #define PET_W            64
 #define PET_H            64
 #define PET_BYTES        (PET_W * PET_H * 2)
@@ -62,14 +65,14 @@ static void shrink565(const uint8_t *src, int sw, int sh, uint8_t *dst, int dw, 
     }
 }
 
-// 门户 JS 打包的 1bpp 为 LSB 在前(像素 i 落在第 i/8 字节的第 i&7 位),展开为黑/白 RGB565
-static void qrimg_expand(const uint8_t *file, uint8_t *dst) {
-    uint16_t *out = (uint16_t *)dst;
-    for (int y = 0; y < QRIMG_SHOW; y++) {
-        const uint8_t *row = file + (size_t)(y * QRIMG_SRC / QRIMG_SHOW) * (QRIMG_SRC / 8);
-        for (int x = 0; x < QRIMG_SHOW; x++) {
-            int sx = x * QRIMG_SRC / QRIMG_SHOW;
-            *out++ = ((row[sx >> 3] >> (sx & 7)) & 1) ? 0x0000 : 0xFFFF;
+// 门户 JS 打包的 1bpp 为 LSB 在前(像素 i 落在第 i/8 字节的第 i&7 位)。
+// 展开为 A8 透明度画布(255 = 模块),配合 image_recolor 染成黑色,比 RGB565 省 4 倍内存。
+static void qrimg_expand_a8(const uint8_t *file, uint8_t *dst) {
+    for (int y = 0; y < QR_SHOW; y++) {
+        const uint8_t *row = file + (size_t)(y * QRIMG_SRC / QR_SHOW) * (QRIMG_SRC / 8);
+        for (int x = 0; x < QR_SHOW; x++) {
+            int sx = x * QRIMG_SRC / QR_SHOW;
+            dst[y * QR_SHOW + x] = ((row[sx >> 3] >> (sx & 7)) & 1) ? 0xFF : 0x00;
         }
     }
 }
@@ -147,39 +150,58 @@ static void build_card(const app_config_t *cfg, const ui_theme_t *th) {
     build_clock(th, 182);
 }
 
-// 二维码说明文字(居中于各自码的下方)
-static lv_obj_t *qr_caption(const ui_theme_t *th, const char *text, int x) {
-    lv_obj_t *l = ui_pixel_label(s_scr, text, &font_cjk_16, th->ink);
-    lv_obj_set_pos(l, x, 170);
-    lv_obj_set_width(l, 104);
-    lv_obj_set_style_text_align(l, LV_TEXT_ALIGN_CENTER, 0);
-    return l;
-}
-
 static void build_qr(const app_config_t *cfg, const ui_theme_t *th) {
-    // 左:链接生成码(门户"二维码内容");右:上传的二维码图(如微信名片)
-    bool has = cfg->qr_a[0] != '\0';
-    s_qr = lv_qrcode_create(s_scr);
-    lv_qrcode_set_size(s_qr, 104);
-    lv_qrcode_set_dark_color(s_qr, lv_color_hex(0x000000));
-    lv_qrcode_set_light_color(s_qr, lv_color_hex(0xFFFFFF));
-    lv_obj_set_pos(s_qr, 14, 60);
-    if (has) lv_qrcode_update(s_qr, cfg->qr_a, strlen(cfg->qr_a));
-    qr_caption(th, ui_text(UI_T_QR_LINK), 14);
+    // 2x2 四槽:每槽可自由选"网页生成"(门户填文本)或"上传图片"(如微信名片)
+    uint8_t *file = s_page_buf;
+    uint8_t *a8 = s_page_buf + QRIMG_FILE_BYTES;
 
-    uint8_t *file = s_page_buf, *dst = s_page_buf + QRIMG_FILE_BYTES;
-    int n = s_page_buf ? app_store_read("qr_b.img", file, QRIMG_FILE_BYTES) : -1;
-    if (n == QRIMG_FILE_BYTES) {
-        qrimg_expand(file, dst);
-        lv_obj_t *cv = lv_canvas_create(s_scr);
-        lv_canvas_set_buffer(cv, dst, QRIMG_SHOW, QRIMG_SHOW,
-                             LV_COLOR_FORMAT_RGB565);
-        lv_obj_set_pos(cv, 122, 60);
-    } else {
-        lv_obj_t *ph = ui_pixel_label(s_scr, ui_text(UI_T_QR_NONE), &font_cjk_16, th->muted);
-        lv_obj_set_pos(ph, 154, 96);
+    for (int i = 0; i < APP_CFG_QR_SLOTS; i++) {
+        int x = 10 + (i % 2) * 124;
+        int y = 54 + (i / 2) * 116;
+        rect(s_scr, x, y, QR_SHOW, QR_SHOW, 0xFFFFFF);   // 扫码需要白底,主题无关
+
+        bool img_mode = (cfg->qr_mode >> i) & 1;
+        bool filled = false;
+        if (img_mode && s_page_buf) {
+            char name[12];
+            snprintf(name, sizeof(name), "qr%d.img", i);
+            if (app_store_read(name, file, QRIMG_FILE_BYTES) == QRIMG_FILE_BYTES) {
+                qrimg_expand_a8(file, a8 + (size_t)i * QR_A8_BYTES);
+                lv_obj_t *cv = lv_canvas_create(s_scr);
+                lv_canvas_set_buffer(cv, a8 + (size_t)i * QR_A8_BYTES,
+                                     QR_SHOW, QR_SHOW, LV_COLOR_FORMAT_A8);
+                lv_obj_set_pos(cv, x, y);
+                // A8 以 image_recolor 染色:模块染黑,透明处露出白底
+                lv_obj_set_style_image_recolor(cv, lv_color_hex(0x000000), 0);
+                lv_obj_set_style_image_recolor_opa(cv, LV_OPA_COVER, 0);
+                filled = true;
+            }
+        } else if (!img_mode && cfg->qr_text[i][0] != '\0') {
+            s_qr = lv_qrcode_create(s_scr);
+            lv_qrcode_set_size(s_qr, QR_SHOW);
+            lv_qrcode_set_dark_color(s_qr, lv_color_hex(0x000000));
+            lv_qrcode_set_light_color(s_qr, lv_color_hex(0xFFFFFF));
+            lv_obj_set_pos(s_qr, x, y);
+            lv_qrcode_update(s_qr, cfg->qr_text[i], strlen(cfg->qr_text[i]));
+            filled = true;
+        }
+        if (!filled) {
+            lv_obj_t *ph = ui_pixel_label(s_scr, ui_text(UI_T_QR_UNSET), &font_cjk_16, th->muted);
+            lv_obj_set_pos(ph, x + 16, y + 40);
+        }
+
+        // 槽标签:门户里填的说明(如"微信"),缺省为 QR1..QR4(语言无关)
+        char lbl[APP_CFG_QRLBL_LEN + 8];
+        if (cfg->qr_label[i][0] != '\0') {
+            snprintf(lbl, sizeof(lbl), "%s", cfg->qr_label[i]);
+        } else {
+            snprintf(lbl, sizeof(lbl), "QR%d", i + 1);
+        }
+        lv_obj_t *l = ui_pixel_label(s_scr, lbl, &font_cjk_16, th->muted);
+        lv_obj_set_pos(l, x, y + QR_SHOW + 4);
+        lv_obj_set_width(l, QR_SHOW);
+        lv_obj_set_style_text_align(l, LV_TEXT_ALIGN_CENTER, 0);
     }
-    qr_caption(th, ui_text(UI_T_QR_IMG), 122);
 }
 
 /* ==================== 像素宠物布局(拓麻歌子式) ==================== */
@@ -338,6 +360,7 @@ static const pet_sprite_t SPR_POOP = { .rows = {      // 8 宽小图,叠加在�
 static lv_obj_t *s_pet_canvas, *s_pet_mood, *s_pet_info, *s_pet_action;
 static lv_obj_t *s_pet_bars[4];
 static int s_pet_sel;                     // 当前选中动作 0..3
+static bool s_pet_adjust;                 // 动作模式(OK 长按进出);退出时 ▲/▼ 恢复切换布局
 static uint8_t s_pet_frame;               // 动画帧
 static uint8_t s_pet_beats;               // 结算节拍计数
 
@@ -433,11 +456,17 @@ static void pet_refresh_text(void) {
     }
     lv_label_set_text(s_pet_info, buf);
 
-    // 动作行
+    // 动作行:动作模式 = 高亮 + ▶ 前缀;普通模式 = 置灰(提示长按 OK 进入)
     static const ui_str_id ACTS[4] = { UI_T_ACT_FEED, UI_T_ACT_PLAY, UI_T_ACT_CLEAN, UI_T_ACT_SLEEP };
     const char *act = ui_text_lang(lang, ACTS[s_pet_sel]);
     if (s_pet_sel == 3 && (p->flags & PET_FLAG_ASLERP)) act = ui_text_lang(lang, UI_T_ACT_WAKE);
-    lv_label_set_text_fmt(s_pet_action, ui_text(UI_T_ACT_FMT), act);
+    char actline[64];
+    if (lang == 0) snprintf(actline, sizeof(actline), "动作:%s", act);
+    else           snprintf(actline, sizeof(actline), "Action: %s", act);
+    const ui_theme_t *thm = ui_pixel_theme();
+    lv_obj_set_style_text_color(s_pet_action,
+                                lv_color_hex(s_pet_adjust ? thm->accent : thm->muted), 0);
+    lv_label_set_text_fmt(s_pet_action, "%s%s", s_pet_adjust ? "▶ " : "", actline);
 }
 
 static void pet_refresh_bars(void) {
@@ -512,7 +541,7 @@ static void build_pet(const app_config_t *cfg, const ui_theme_t *th) {
     pet_refresh_text();
 }
 
-// 宠物页按键:▲/▼ 换动作,OK 执行(OK 长按返回菜单由 main.c 全局拦截)
+// 宠物页"动作模式"按键:▲/▼ 选动作,OK 执行(仅在 s_pet_adjust 时被调用)
 static void pet_key(bsp_btn_t btn, bsp_btn_ev_t ev) {
     if (ev != BSP_BTN_CLICK) return;
     if (btn == BSP_BTN_UP || btn == BSP_BTN_DOWN) {
@@ -547,7 +576,7 @@ void demo_badge_enter(void) {
     // 按布局的精确需求分配(失败则该布局降级为占位内容)
     switch (cfg->layout) {
     case APP_LAYOUT_QR:
-        s_page_buf = heap_caps_malloc(QRIMG_FILE_BYTES + QRIMG_DST_BYTES, MALLOC_CAP_8BIT);
+        s_page_buf = heap_caps_malloc(QR_PAGE_BYTES, MALLOC_CAP_8BIT);
         break;
     case APP_LAYOUT_PET:
         s_page_buf = heap_caps_malloc(PET_BYTES, MALLOC_CAP_8BIT);
@@ -569,9 +598,9 @@ void demo_badge_enter(void) {
 
     if (cfg->layout == APP_LAYOUT_PET) {
         const ui_hint_t PET_HINTS[] = {
-            { LV_SYMBOL_UP LV_SYMBOL_DOWN, ui_text(UI_T_SEL),  false },
-            { "OK",                        ui_text(UI_T_ADJ),  false },
-            { "OK",                        ui_text(UI_T_MENU), true  },
+            { LV_SYMBOL_UP LV_SYMBOL_DOWN, ui_text(UI_T_VIEW), false },  // 布局/选动作
+            { "OK",                        ui_text(UI_T_MENU), false },  // 菜单/执行
+            { "OK",                        ui_text(UI_T_ADJ),  true  },  // 长按进/出动作模式
         };
         ui_pixel_hints(s_scr, PET_HINTS, 3);
         s_pet_frame = 0;
@@ -604,19 +633,28 @@ void demo_badge_exit(void) {
     }
     if (s_page_buf) { free(s_page_buf); s_page_buf = NULL; }
     if (s_avatar_src) { free(s_avatar_src); s_avatar_src = NULL; }
+    s_pet_adjust = false;              // 重进页面从普通模式开始
 }
 
 void demo_badge_key(bsp_btn_t btn, bsp_btn_ev_t ev) {
-    if (btn == BSP_BTN_OK && ev == BSP_BTN_CLICK) {
-        demo_request_menu();                 // 本页对象已被 exit 删除,之后不能再碰
-        return;
-    }
     if (btn == BSP_BTN_DOWN && ev == BSP_BTN_LONG) {
         demo_request_screen_off();
         return;
     }
     if (app_config_get()->layout == APP_LAYOUT_PET) {
-        pet_key(btn, ev);                    // 宠物页:▲/▼ 选动作,OK 执行
+        if (btn == BSP_BTN_OK && ev == BSP_BTN_LONG) {
+            s_pet_adjust = !s_pet_adjust;   // OK 长按 = 进/出动作模式
+            pet_refresh_text();
+            return;
+        }
+        if (s_pet_adjust) {                 // 动作模式消化全部按键
+            pet_key(btn, ev);
+            return;
+        }
+        // 普通模式:OK 短按与 ▲/▼ 走下方统一逻辑(菜单 / 切布局)
+    }
+    if (btn == BSP_BTN_OK && ev == BSP_BTN_CLICK) {
+        demo_request_menu();                 // 本页对象已被 exit 删除,之后不能再碰
         return;
     }
     if (ev == BSP_BTN_CLICK && (btn == BSP_BTN_UP || btn == BSP_BTN_DOWN)) {

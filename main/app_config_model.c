@@ -11,7 +11,7 @@ static const uint8_t OFF_STEPS[] = { 0, 1, 5, 10, 30 };
 void app_config_defaults(app_config_t *cfg) {
     memset(cfg, 0, sizeof(*cfg));
     snprintf(cfg->name, sizeof(cfg->name), "%s", "BadgeBot");
-    snprintf(cfg->qr_a, sizeof(cfg->qr_a), "%s",
+    snprintf(cfg->qr_text[0], sizeof(cfg->qr_text[0]), "%s",
              "https://github.com/YeShanBoYun-Studio/BadgeBot");
     cfg->hide_org_title = true;   // 公司/岗位默认隐藏,门户里可改
     cfg->layout = APP_LAYOUT_CARD;
@@ -25,9 +25,9 @@ void app_config_defaults(app_config_t *cfg) {
 }
 
 // 字符串字段只保证 NUL 结尾;截断产生的残缺 UTF-8 尾字节由显示层容忍(LVGL 跳过非法序列)。
-static bool terminate(char *s) {
-    if (memchr(s, '\0', APP_CFG_STR_LEN)) return false;
-    s[APP_CFG_STR_LEN - 1] = '\0';
+static bool terminate(char *s, size_t cap) {
+    if (memchr(s, '\0', cap)) return false;
+    s[cap - 1] = '\0';
     return true;
 }
 
@@ -39,10 +39,14 @@ static bool clamp_u8(uint8_t *v, uint8_t lo, uint8_t hi) {
 
 bool app_config_sanitize(app_config_t *cfg) {
     bool changed = false;
-    changed |= terminate(cfg->name);
-    changed |= terminate(cfg->org);
-    changed |= terminate(cfg->title);
-    changed |= terminate(cfg->qr_a);
+    changed |= terminate(cfg->name, sizeof(cfg->name));
+    changed |= terminate(cfg->org, sizeof(cfg->org));
+    changed |= terminate(cfg->title, sizeof(cfg->title));
+    for (int i = 0; i < APP_CFG_QR_SLOTS; i++) {
+        changed |= terminate(cfg->qr_text[i], sizeof(cfg->qr_text[i]));
+        changed |= terminate(cfg->qr_label[i], sizeof(cfg->qr_label[i]));
+    }
+    if (cfg->qr_mode > 0x0F) { cfg->qr_mode = 0; changed = true; }
     if (cfg->layout >= APP_LAYOUT_COUNT) { cfg->layout = APP_LAYOUT_CARD; changed = true; }
     if (cfg->lang > 1) { cfg->lang = 0; changed = true; }
     if (cfg->layout_mask == 0 || cfg->layout_mask > APP_LAYOUT_ALL_MASK) {

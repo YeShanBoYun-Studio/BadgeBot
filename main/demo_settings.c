@@ -1,10 +1,14 @@
-// main/demo_settings.c —— 设置页:亮度、音量、语言、主题、自动息屏、开机页、布局。
+// main/demo_settings.c —— 设置页:亮度、音量、语言、主题、自动息屏、开机页、布局、恢复出厂。
 //
 // 操作:上/下选行;确定 单击=下一档、双击=上一档(button 组件保证单击与双击互斥)。
 // "主页布局"行:单击进入布局开关子页(逐个开/关四套布局),双击直接切换默认布局。
-// 每次改动立即通过 app_config_update() 生效并写入 NVS;主题切换后本页立即重建生效。
+// "恢复出厂"行:单击进入待确认(值显示"再按OK确认"),再单击执行;换行即取消。
+//   执行后清除 NVS 配置+宠物、删除上传的头像/二维码图,主题立即回默认并重建本页。
+// 每次改动立即通过 app_config_update() 生效并写入 NVS。
 #include "demo.h"
 #include "app_config.h"
+#include "app_pet.h"
+#include "app_store.h"
 #include "ui_pixel.h"
 #include "ui_text.h"
 #include "fonts/fonts.h"
@@ -18,7 +22,7 @@ enum {
     ROW_SCREEN_OFF,
     ROW_BOOT,
     ROW_LAYOUT,
-    ROW_ABOUT,
+    ROW_RESET,
     ROW_COUNT,
 };
 
@@ -28,6 +32,7 @@ static lv_obj_t *s_values[ROW_COUNT];
 static int s_sel;
 static bool s_edit_layouts;          // true = 正在布局开关子页
 static int s_lay_sel;                // 子页选中行(app_layout_t)
+static bool s_reset_arm;             // true = 恢复出厂已待确认,再按 OK 执行
 static app_config_t s_cfg;           // 页面内的工作副本,改动后整体提交
 
 static const char *lang_text(ui_str_id id) {
@@ -65,13 +70,20 @@ static void refresh(void) {
                       s_cfg.boot_badge ? lang_text(UI_T_BOOT_BADGE) : lang_text(UI_T_BOOT_MENU));
     lv_label_set_text(s_values[ROW_LAYOUT],
                       s_cfg.layout < APP_LAYOUT_COUNT ? layout_label(s_cfg.layout) : "?");
-    lv_label_set_text(s_values[ROW_ABOUT], "M2.2");
+    // 恢复出产行:平时空值,待确认时红色高亮提示
+    if (s_reset_arm) {
+        lv_label_set_text(s_values[ROW_RESET], lang_text(UI_T_RESET_ARM));
+        lv_obj_set_style_text_color(s_values[ROW_RESET],
+                                    lv_color_hex(ui_pixel_theme()->accent), 0);
+    } else {
+        lv_label_set_text(s_values[ROW_RESET], "");
+    }
 }
 
 static void build_rows(void) {
     static const ui_str_id ROWS[ROW_COUNT] = {
         UI_T_ROW_BL, UI_T_ROW_VOL, UI_T_ROW_LANG, UI_T_ROW_THEME,
-        UI_T_ROW_OFF, UI_T_ROW_BOOT, UI_T_ROW_LAYOUT, UI_T_ROW_ABOUT,
+        UI_T_ROW_OFF, UI_T_ROW_BOOT, UI_T_ROW_LAYOUT, UI_T_ROW_RESET,
     };
     for (int i = 0; i < ROW_COUNT; i++) {
         s_cards[i] = ui_pixel_panel_create(s_scr, 11, 52 + i * 29, 218, 26,
@@ -185,11 +197,36 @@ static bool mask_toggle(uint8_t bit) {
     return true;
 }
 
+// ---- 恢复出厂 ----
+
+// 擦 NVS(配置+宠物)、删上传资产,主题回默认后重建本页
+static void do_factory_reset(void) {
+    app_config_factory_reset();
+    app_pet_reset();
+    if (app_store_ready()) {
+        app_store_write("avatar.rgb565", NULL, 0);
+        for (int i = 0; i < APP_CFG_QR_SLOTS; i++) {
+            char name[12];
+            snprintf(name, sizeof(name), "qr%d.img", i);
+            app_store_write(name, NULL, 0);
+        }
+        app_store_write("qr_b.img", NULL, 0);   // 旧版单二维码文件一并清理
+    }
+    s_cfg = *app_config_get();
+    ui_pixel_set_theme(s_cfg.theme);
+    int keep = s_sel;
+    demo_settings_exit();
+    demo_settings_enter();
+    s_sel = keep;
+    refresh();
+}
+
 void demo_settings_enter(void) {
     s_cfg = *app_config_get();
     s_sel = 0;
     s_lay_sel = 0;
     s_edit_layouts = false;
+    s_reset_arm = false;
     s_scr = ui_pixel_screen_create("SETTINGS");
     build_rows();
     const ui_hint_t SET_HINTS[] = {
@@ -230,6 +267,13 @@ void demo_settings_key(bsp_btn_t btn, bsp_btn_ev_t ev) {
                 s_edit_layouts = true;
                 s_lay_sel = 0;
                 build_layout_page();
+            } else if (s_sel == ROW_RESET) { // 单击 = 待确认;再单击 = 执行
+                if (s_reset_arm) {
+                    do_factory_reset();
+                } else {
+                    s_reset_arm = true;
+                    refresh();
+                }
             } else {
                 adjust(+1);
             }
@@ -246,5 +290,6 @@ void demo_settings_key(bsp_btn_t btn, bsp_btn_ev_t ev) {
     }
     s_sel = (btn == BSP_BTN_UP) ? (s_sel + ROW_COUNT - 1) % ROW_COUNT
                                 : (s_sel + 1) % ROW_COUNT;
+    s_reset_arm = false;                 // 换行即取消待确认
     refresh();
 }
