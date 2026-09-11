@@ -147,6 +147,30 @@ bool pet_model_play(pet_state_t *s, uint32_t now)
     return true;
 }
 
+// ---- 小游戏(拓麻歌子传统:玩耍可以有小游戏,赢局奖心情) ----
+
+#define GAME_ENERGY_COST 10
+#define GAME_ROUND_WIN_HAPPY   8
+#define GAME_ROUND_LOSE_HAPPY  2
+
+bool pet_model_game_start(pet_state_t *s)
+{
+    if (s->hatch_epoch == UINT32_MAX || (s->flags & PET_FLAG_ASLERP)) return false;
+    if (s->energy < GAME_ENERGY_COST) return false;
+    s->energy = (uint8_t)(s->energy - GAME_ENERGY_COST);
+    return true;
+}
+
+void pet_model_game_finish(pet_state_t *s, int wins, int rounds)
+{
+    if (wins < 0) wins = 0;
+    if (rounds < 1) rounds = 1;
+    if (wins > rounds) wins = rounds;
+    stat_gain(&s->happy, (uint8_t)(wins * GAME_ROUND_WIN_HAPPY +
+                                   (rounds - wins) * GAME_ROUND_LOSE_HAPPY));
+    s->weight_g = (uint16_t)(s->weight_g + wins);
+}
+
 bool pet_model_clean(pet_state_t *s, uint32_t now)
 {
     (void)now;

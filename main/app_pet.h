@@ -65,6 +65,11 @@ bool pet_model_play(pet_state_t *s, uint32_t now);
 bool pet_model_clean(pet_state_t *s, uint32_t now);
 bool pet_model_toggle_sleep(pet_state_t *s, uint32_t now);
 
+// 小游戏:开局扣 10 点精力(不足/睡着/未出生返回 false);
+// 结束按胜局结算心情(胜 +8 / 负 +2,封顶 100)与体重(每胜 +1g)。
+bool pet_model_game_start(pet_state_t *s);
+void pet_model_game_finish(pet_state_t *s, int wins, int rounds);
+
 // ---- 目标端(app_pet.c) ----
 #ifdef ESP_PLATFORM
 #include "esp_err.h"

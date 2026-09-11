@@ -81,6 +81,17 @@ extern "C" {
     X(ACT_CLEAN,     "清洁",                 "Clean") \
     X(ACT_SLEEP,     "睡觉",                 "Sleep") \
     X(ACT_WAKE,      "叫醒",                 "Wake") \
+    X(G_WHAT,        "玩什么?",              "Play what?") \
+    X(G_GUESS,       "猜一猜",               "Guess") \
+    X(G_TAP,         "快反应",               "React") \
+    X(G_PICK,        "猜哪边?",              "Pick a side") \
+    X(G_WIN,         "赢了!",                "Win!") \
+    X(G_LOSE,        "输了",                 "Lose") \
+    X(G_OVER,        "结束",                 "Over") \
+    X(G_TAP_WAIT,    "等苹果出现…",          "Wait for it…") \
+    X(G_TAP_NOW,     "苹果!按 OK",           "Apple! press OK") \
+    X(G_TAP_MISS,    "没抓住!",              "Missed!") \
+    X(G_NOENERGY,    "精力不足,玩不动",      "Too tired to play") \
     X(PORTAL_STARTING, "正在启动热点…",      "Starting hotspot…") \
     X(PORTAL_DONE,  "配网已结束,按 OK 返回", "Portal closed - press OK") \
     X(PORTAL_URL,   "手机浏览器打开 %s",     "Open %s in a browser")

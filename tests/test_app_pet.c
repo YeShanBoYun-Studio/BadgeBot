@@ -147,6 +147,40 @@ static void test_mood(void)
     assert(pet_model_mood(&s) == PET_MOOD_NA);
 }
 
+static void test_games(void)
+{
+    pet_state_t s;
+    pet_model_init(&s, 0);
+    s.hatch_epoch = 0;
+    s.flags = 0;
+
+    // 精力不足不能开局;够 10 点时扣除
+    s.energy = 5;
+    assert(!pet_model_game_start(&s));
+    assert(s.energy == 5);
+    s.energy = 40;
+    assert(pet_model_game_start(&s));
+    assert(s.energy == 30);
+
+    // 结算:3/5 胜 → 心情 +3*8+2*2 = +28(封顶 100),体重 +3
+    s.happy = 60;
+    s.weight_g = 10;
+    pet_model_game_finish(&s, 3, 5);
+    assert(s.happy == 88);
+    assert(s.weight_g == 13);
+
+    // 心情封顶 100;胜局数越界按平局裁剪;体重上限无(脏数据由 NVS 层不管)
+    s.happy = 95;
+    pet_model_game_finish(&s, 7, 5);
+    assert(s.happy == 100);
+    assert(s.weight_g == 18);              // wins 裁剪为 5
+
+    // 传 0 胜也有安慰奖
+    s.happy = 10;
+    pet_model_game_finish(&s, 0, 5);
+    assert(s.happy == 20);
+}
+
 int main(void)
 {
     test_init_and_egg();
@@ -155,5 +189,6 @@ int main(void)
     test_actions();
     test_sleep_energy_and_poop();
     test_mood();
+    test_games();
     return 0;
 }

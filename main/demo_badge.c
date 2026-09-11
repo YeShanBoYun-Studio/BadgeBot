@@ -4,7 +4,8 @@
 //           槽下有文字标识(门户填,缺省 QR1..QR4)
 //   C 宠物  黑白像素宠物机(拓麻歌子式):蛋孵化→幼年→少年→成年,
 //           饱食/心情/清洁/精力随时间衰减,便便要清理,睡觉回精力;
-//           离线时长也会结算(NVS)
+//           离线时长也会结算(NVS);动作模式「玩耍」进入小游戏:
+//           猜方向(拓麻歌子传统)/快反应,赢局奖心情体重,开局耗精力
 // 电量/音量/Wi-Fi 在每屏共用的顶部状态栏;自动息屏由 main.c 统一处理。
 // 按键:▼ 长按 = 立即息屏;宠物页 OK 长按 = 进/出动作模式,动作模式下 ▲/▼ 选动作、
 //       OK 短按执行;普通模式 ▲/▼ 切布局、OK 短按开菜单。
@@ -18,6 +19,7 @@
 #include "ui_text.h"
 #include "fonts/fonts.h"
 #include "esp_heap_caps.h"
+#include "esp_random.h"
 #include "lvgl.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -357,12 +359,91 @@ static const pet_sprite_t SPR_POOP = { .rows = {      // 8 宽小图,叠加在�
     "........",
 }};
 
+// ---- 小游戏用图(猜方向:两扇门+选中条+探头;快反应:苹果) ----
+
+static const pet_sprite_t SPR_DOOR = { .rows = {      // 关闭的门(左开缝当门轴)
+    "XXXXXXXXXXXXXXXX",
+    "X..............X",
+    "X..............X",
+    "X..............X",
+    "X..............X",
+    "X..............X",
+    "X.............XX",
+    "X..............X",
+    "X.............XX",
+    "X..............X",
+    "X..............X",
+    "X..............X",
+    "X..............X",
+    "X..............X",
+    "X..............X",
+    "XXXXXXXXXXXXXXXX",
+}};
+
+static const pet_sprite_t SPR_MARK = { .rows = {      // 选中标记(门上方横条)
+    "XXXXXXXXXXXXXXXX",
+    "XXXXXXXXXXXXXXXX",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+}};
+
+static const pet_sprite_t SPR_APPLE = { .rows = {     // 快反应目标:苹果
+    "................",
+    "................",
+    "................",
+    "........X.......",
+    ".......XX.......",
+    "....XX..XX......",
+    "...XXXXXXXXX....",
+    "..XXXXXXXXXXX...",
+    "..XXXXXXXXXXX...",
+    "..XXXXXXXXXXX...",
+    "..XXXXXXXXXXX...",
+    "..XXXXXXXXXXX...",
+    "...XXXXXXXXX....",
+    "....XXXXXXX.....",
+    "................",
+    "................",
+}};
+
 static lv_obj_t *s_pet_canvas, *s_pet_mood, *s_pet_info, *s_pet_action;
 static lv_obj_t *s_pet_bars[4];
 static int s_pet_sel;                     // 当前选中动作 0..3
 static bool s_pet_adjust;                 // 动作模式(OK 长按进出);退出时 ▲/▼ 恢复切换布局
 static uint8_t s_pet_frame;               // 动画帧
 static uint8_t s_pet_beats;               // 结算节拍计数
+
+static void game_refresh_text(void);      // 前向声明:日常文字刷新在游戏期间要转发给游戏
+
+// ---- 小游戏(动作模式里选「玩耍」进入) ----
+// 猜方向:两扇门,▲/▼ 选左/右,OK 确认,宠物从一侧探头,猜中赢;快反应:苹果
+// 随机时刻出现,900ms 内按 OK 算赢。均 5 局,结算走 pet_model_game_finish。
+enum { GAME_NONE, GAME_SELECT, GAME_GUESS, GAME_TAP };
+#define GAME_ROUNDS    5
+#define GAME_TAP_WIN_MS 900
+static int s_game;
+static int s_gsel;                        // GAME_SELECT:0 猜一猜 1 快反应
+static int s_round, s_wins;               // 当前局(0 基)/已胜局
+static int s_phase;                       // 各游戏内部阶段
+static int s_pick, s_reveal;              // 猜方向:玩家选择 / 宠物真实方向
+static int s_beats;                       // 猜方向:揭晓停留节拍(700ms/拍)
+static int s_tap_ticks;                   // 快反应:50ms 精确计数
+static int s_tap_wait;                    // 苹果出现前的等待 tick 数
+static lv_timer_t *s_tap_timer;           // 快反应 50ms 定时器(开局建,收尾删)
+static bool s_last_win;                   // 上一局结果(文字显示用)
+static int s_last_ms;                     // 快反应上一局反应时间
 
 static uint16_t rgb888_to_565(uint32_t c) {
     return (uint16_t)(((c & 0xF80000) >> 8) | ((c & 0x00FC00) >> 5) |
@@ -420,6 +501,10 @@ static const char *pet_stage_txt(pet_stage_t stage, unsigned lang) {
 }
 
 static void pet_refresh_text(void) {
+    if (s_game != GAME_NONE) {                 // 游戏期间三行文字归游戏
+        game_refresh_text();
+        return;
+    }
     const app_config_t *cfg = app_config_get();
     unsigned lang = cfg->lang;
     const pet_state_t *p = app_pet_get();
@@ -478,9 +563,226 @@ static void pet_refresh_bars(void) {
     }
 }
 
-// 宠物页每拍(700ms):帧动画 + 周期性数值结算
+/* ==================== 小游戏(拓麻歌子式:玩耍 → 小游戏,赢局奖心情) ==================== */
+
+// 游戏期间画布由本函数族接管;pet_tick 不再画日常帧
+
+static void game_render(void) {
+    const ui_theme_t *th = ui_pixel_theme();
+    uint16_t fg = rgb888_to_565(th->ink);
+    uint16_t bg = rgb888_to_565(th->panel);
+    for (int i = 0; i < PET_W * PET_H; i++) ((uint16_t *)s_page_buf)[i] = bg;
+
+    if (s_game == GAME_SELECT) {
+        pet_sprite_render(s_pet_frame ? &SPR_CHILD_B : &SPR_CHILD_A, 3, 4, 8, fg, bg);
+    } else if (s_game == GAME_GUESS) {
+        if (s_phase <= 1) {
+            // 两扇门:被猜中侧在揭晓时换成探头本体
+            for (int side = 0; side < 2; side++) {
+                bool open = (s_phase == 1 && side == s_reveal);
+                pet_sprite_render(open ? &SPR_CHILD_A : &SPR_DOOR, 2, 12, side * 32, fg, bg);
+            }
+            if (s_phase == 0) pet_sprite_render(&SPR_MARK, 2, 2, s_pick * 32, fg, bg);
+        }
+    } else if (s_game == GAME_TAP) {
+        if (s_phase == 0) pet_sprite_render(&SPR_CHILD_A, 2, 4, 16, fg, bg);
+        else if (s_phase == 1) pet_sprite_render(&SPR_APPLE, 2, 8, s_reveal, fg, bg);
+    }
+    if (s_pet_canvas) lv_obj_invalidate(s_pet_canvas);
+}
+
+// 游戏期间三行文字(覆盖日常的心情/信息/动作行)
+static void game_refresh_text(void) {
+    unsigned lang = app_config_get()->lang;
+    char buf[48];
+    if (s_game == GAME_SELECT) {
+        lv_label_set_text(s_pet_mood, ui_text_lang(lang, UI_T_G_WHAT));
+        lv_label_set_text(s_pet_info, "");
+        if (lang == 0) snprintf(buf, sizeof(buf), "%s 猜一猜   %s 快反应",
+                                s_gsel == 0 ? "▶" : " ", s_gsel == 1 ? "▶" : " ");
+        else snprintf(buf, sizeof(buf), "%s Guess   %s React",
+                      s_gsel == 0 ? ">" : " ", s_gsel == 1 ? ">" : " ");
+        lv_label_set_text(s_pet_action, buf);
+        return;
+    }
+    if (s_game == GAME_GUESS) {
+        lv_label_set_text(s_pet_mood, ui_text_lang(lang, UI_T_G_GUESS));
+        if (lang == 0) snprintf(buf, sizeof(buf), "第%d/%d局 胜%d",
+                                s_round + 1, GAME_ROUNDS, s_wins);
+        else snprintf(buf, sizeof(buf), "Round %d/%d won %d",
+                      s_round + 1, GAME_ROUNDS, s_wins);
+        lv_label_set_text(s_pet_info, buf);
+        if (s_phase == 0) lv_label_set_text(s_pet_action, ui_text_lang(lang, UI_T_G_PICK));
+        else if (s_phase == 1)
+            lv_label_set_text(s_pet_action, ui_text_lang(lang, s_last_win ? UI_T_G_WIN : UI_T_G_LOSE));
+        else lv_label_set_text(s_pet_action, ui_text_lang(lang, UI_T_G_OVER));
+        return;
+    }
+    if (s_game == GAME_TAP) {
+        lv_label_set_text(s_pet_mood, ui_text_lang(lang, UI_T_G_TAP));
+        if (lang == 0) snprintf(buf, sizeof(buf), "第%d/%d局 胜%d",
+                                s_round + 1, GAME_ROUNDS, s_wins);
+        else snprintf(buf, sizeof(buf), "Round %d/%d won %d",
+                      s_round + 1, GAME_ROUNDS, s_wins);
+        lv_label_set_text(s_pet_info, buf);
+        if (s_phase == 0) lv_label_set_text(s_pet_action, ui_text_lang(lang, UI_T_G_TAP_WAIT));
+        else if (s_phase == 1) lv_label_set_text(s_pet_action, ui_text_lang(lang, UI_T_G_TAP_NOW));
+        else if (s_phase == 2) {
+            if (s_last_win) {
+                if (lang == 0) snprintf(buf, sizeof(buf), "%d毫秒 赢!", s_last_ms);
+                else snprintf(buf, sizeof(buf), "%d ms win!", s_last_ms);
+            } else {
+                snprintf(buf, sizeof(buf), "%s", ui_text_lang(lang, UI_T_G_TAP_MISS));
+            }
+            lv_label_set_text(s_pet_action, buf);
+        } else lv_label_set_text(s_pet_action, ui_text_lang(lang, UI_T_G_OVER));
+    }
+}
+
+// 收尾:删定时器、回日常画面;s_game 归零
+static void game_stop(void) {
+    if (s_tap_timer) { lv_timer_delete(s_tap_timer); s_tap_timer = NULL; }
+    s_game = GAME_NONE;
+    s_phase = 0;
+    pet_render_sprite();
+    pet_refresh_text();
+}
+
+static void game_end_apply(void) {
+    pet_model_game_finish(app_pet_mut(), s_wins, GAME_ROUNDS);
+    app_pet_save();
+    pet_refresh_bars();
+}
+
+// 猜方向:揭晓停 2 拍、终局停 4 拍,由 pet_tick 的 700ms 节拍驱动
+static void game_guess_tick(void) {
+    if (s_phase == 1) {
+        if (++s_beats >= 2) {
+            s_beats = 0;
+            s_round++;
+            if (s_round >= GAME_ROUNDS) {
+                s_phase = 2;
+                game_end_apply();
+            } else {
+                s_phase = 0;
+            }
+            game_render();
+            game_refresh_text();
+        }
+    } else if (s_phase == 2 && ++s_beats >= 4) {
+        game_stop();
+    }
+}
+
+static void game_guess_pick(int side) {
+    if (s_phase != 0 || s_pick == side) return;
+    s_pick = side;
+    game_render();
+}
+
+static void game_guess_ok(void) {
+    if (s_phase != 0) return;
+    s_reveal = (int)(esp_random() & 1);
+    s_last_win = (s_reveal == s_pick);
+    if (s_last_win) s_wins++;
+    s_phase = 1;
+    s_beats = 0;
+    game_render();
+    game_refresh_text();
+}
+
+// 快反应一局结束:胜利记反应时间;推进局数/终局
+static void game_tap_round_done(bool win, int ms) {
+    s_last_win = win;
+    s_last_ms = ms;
+    if (win) s_wins++;
+    s_tap_ticks = 0;
+    s_round++;
+    if (s_round >= GAME_ROUNDS) {
+        s_phase = 3;
+        game_end_apply();
+    } else {
+        s_phase = 2;                       // 0.5 秒反馈停留后进下一局
+    }
+    game_render();
+    game_refresh_text();
+}
+
+// 快反应 50ms 节拍:等待→苹果出现(最多 2 秒)→反馈→下一局/终局
+static void game_tap_tick(lv_timer_t *t) {
+    (void)t;
+    s_tap_ticks++;
+    if (s_phase == 0 && s_tap_ticks >= s_tap_wait) {
+        s_phase = 1;
+        s_tap_ticks = 0;
+        s_reveal = (int)(esp_random() % 33);
+        game_render();
+        game_refresh_text();
+    } else if (s_phase == 1 && s_tap_ticks > 40) {   // 2 秒没按
+        game_tap_round_done(false, 0);
+    } else if (s_phase == 2 && s_tap_ticks >= 10) {
+        s_phase = 0;
+        s_tap_ticks = 0;
+        s_tap_wait = 16 + (int)(esp_random() % 40);
+        game_render();
+        game_refresh_text();
+    } else if (s_phase == 3 && s_tap_ticks >= 10) {
+        game_stop();
+    }
+}
+
+static void game_tap_ok(void) {
+    if (s_phase == 0) {                    // 苹果还没出就按:抢跑
+        game_tap_round_done(false, 0);
+    } else if (s_phase == 1) {
+        int ms = s_tap_ticks * 50;
+        game_tap_round_done(ms <= GAME_TAP_WIN_MS, ms);
+    }
+}
+
+// 动作模式选「玩耍」确认后进入:先出小游戏选择菜单
+static void game_open_select(void) {
+    s_game = GAME_SELECT;
+    s_gsel = 0;
+    game_render();
+    game_refresh_text();
+}
+
+static void game_begin(int sel) {
+    pet_state_t *p = app_pet_mut();
+    if (!app_clock_synced() || !pet_model_game_start(p)) {
+        lv_label_set_text(s_pet_action, ui_text(UI_T_G_NOENERGY));
+        return;
+    }
+    app_pet_save();
+    pet_refresh_bars();
+    s_round = 0;
+    s_wins = 0;
+    s_last_win = false;
+    s_last_ms = 0;
+    s_game = (sel == 0) ? GAME_GUESS : GAME_TAP;
+    if (s_game == GAME_GUESS) {
+        s_phase = 0;
+        s_pick = 0;
+    } else {
+        s_phase = 0;
+        s_tap_ticks = 0;
+        s_tap_wait = 16 + (int)(esp_random() % 40);
+        s_tap_timer = lv_timer_create(game_tap_tick, 50, NULL);
+    }
+    game_render();
+    game_refresh_text();
+}
+
+// OK 长按退出动作模式时,若在游戏中则中止(开局扣的精力不退)
+static void game_cancel(void) {
+    if (s_game != GAME_NONE) game_stop();
+}
+
+// 宠物页每拍(700ms):帧动画 + 周期性数值结算;猜方向游戏的节拍也挂在这里
 static void pet_tick(lv_timer_t *t) {
     (void)t;
+    if (s_game == GAME_GUESS) game_guess_tick();
     if (++s_pet_beats >= 30) {                   // ~21 秒结算一次并落盘
         s_pet_beats = 0;
         if (app_clock_synced()) {
@@ -491,7 +793,8 @@ static void pet_tick(lv_timer_t *t) {
         pet_refresh_text();
     }
     s_pet_frame ^= 1;
-    pet_render_sprite();
+    if (s_game == GAME_NONE) pet_render_sprite();
+    else if (s_game == GAME_SELECT) game_render();
 }
 
 static void build_pet(const app_config_t *cfg, const ui_theme_t *th) {
@@ -541,9 +844,29 @@ static void build_pet(const app_config_t *cfg, const ui_theme_t *th) {
     pet_refresh_text();
 }
 
-// 宠物页"动作模式"按键:▲/▼ 选动作,OK 执行(仅在 s_pet_adjust 时被调用)
+// 宠物页"动作模式"按键:▲/▼ 选动作,OK 执行(仅在 s_pet_adjust 时被调用);
+// 游戏进行中按键先归游戏
 static void pet_key(bsp_btn_t btn, bsp_btn_ev_t ev) {
     if (ev != BSP_BTN_CLICK) return;
+    if (s_game == GAME_SELECT) {
+        if (btn == BSP_BTN_UP || btn == BSP_BTN_DOWN) {
+            s_gsel = 1 - s_gsel;
+            game_refresh_text();
+        } else if (btn == BSP_BTN_OK) {
+            game_begin(s_gsel);
+        }
+        return;
+    }
+    if (s_game == GAME_GUESS) {
+        if (btn == BSP_BTN_UP) game_guess_pick(0);
+        else if (btn == BSP_BTN_DOWN) game_guess_pick(1);
+        else if (btn == BSP_BTN_OK) game_guess_ok();
+        return;
+    }
+    if (s_game == GAME_TAP) {
+        if (btn == BSP_BTN_OK) game_tap_ok();
+        return;
+    }
     if (btn == BSP_BTN_UP || btn == BSP_BTN_DOWN) {
         s_pet_sel = (s_pet_sel + 4 + (btn == BSP_BTN_DOWN ? 1 : -1)) % 4;
         pet_refresh_text();
@@ -555,7 +878,7 @@ static void pet_key(bsp_btn_t btn, bsp_btn_ev_t ev) {
     bool did = false;
     switch (s_pet_sel) {
     case 0: did = pet_model_feed(p, now);  break;
-    case 1: did = pet_model_play(p, now);  break;
+    case 1: game_open_select(); return;      // 玩耍 → 小游戏菜单
     case 2: did = pet_model_clean(p, now); break;
     default: did = pet_model_toggle_sleep(p, now); break;
     }
@@ -633,6 +956,8 @@ void demo_badge_exit(void) {
     }
     if (s_page_buf) { free(s_page_buf); s_page_buf = NULL; }
     if (s_avatar_src) { free(s_avatar_src); s_avatar_src = NULL; }
+    if (s_tap_timer) { lv_timer_delete(s_tap_timer); s_tap_timer = NULL; }
+    s_game = GAME_NONE;
     s_pet_adjust = false;              // 重进页面从普通模式开始
 }
 
@@ -644,6 +969,7 @@ void demo_badge_key(bsp_btn_t btn, bsp_btn_ev_t ev) {
     if (app_config_get()->layout == APP_LAYOUT_PET) {
         if (btn == BSP_BTN_OK && ev == BSP_BTN_LONG) {
             s_pet_adjust = !s_pet_adjust;   // OK 长按 = 进/出动作模式
+            if (!s_pet_adjust) game_cancel();  // 退出动作模式时中止进行中的游戏
             pet_refresh_text();
             return;
         }
