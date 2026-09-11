@@ -7,6 +7,8 @@
 //   POST /api/avatar  头像(96x96 RGB565 原始字节,body 为 0 清除)
 //   POST /api/qr0..3  二维码槽 0..3 的上传图(128x128 1bpp,body 为 0 清除);
 //                     每槽内容来源由 qr_mode 位图选择:bit n = 1 用上传图,0 用网页生成文本
+//   GET/POST /api/notes 提词稿(notes.txt,UTF-8 纯文本,一行 = 一段,上限 32KB);
+//                     页面支持粘贴 / .txt 读入 / .pptx 备注提取(浏览器端解包,零依赖)
 //   POST /api/done    用户点"完成并联网":数秒后关热点并立即联网校时
 // 图片由页面 JS 裁剪:默认居中正方形选区,可拖动/缩放;固件不做图片解码。
 // 注意:store 分区曾因 FATFS 长文件名未启用(CONFIG_FATFS_LFN_NONE)导致
@@ -38,8 +40,9 @@ static const char PORTAL_HTML[] =
 "h2{margin:8px 0}fieldset{border:1px solid #2a323c;border-radius:8px;margin:12px 0}"
 "legend{color:#ffd928;padding:0 6px}"
 "label{display:block;color:#93a3b0;font-size:13px;margin-top:8px}"
-"input{width:100%;box-sizing:border-box;padding:8px;margin:4px 0;background:#11161d;"
+"input,textarea{width:100%;box-sizing:border-box;padding:8px;margin:4px 0;background:#11161d;"
 "color:#e9eef4;border:1px solid #2a323c;border-radius:6px}"
+"textarea{font:14px/1.5 system-ui;resize:vertical}"
 "button{padding:10px 18px;background:#ffd928;color:#111;border:0;border-radius:6px;font-weight:700}"
 "button.minor{background:#2a323c;color:#e9eef4;font-weight:400}"
 "button.done{width:100%;margin-top:12px;background:#2ea043;color:#fff}"
@@ -74,6 +77,15 @@ static const char PORTAL_HTML[] =
 "<div id='qrs'></div>"
 "<button id='b_saveqr' onclick='saveQr()'>保存二维码设置</button><span id='qrm'></span>"
 "</fieldset>"
+"<fieldset><legend id='l_notes'>提词稿(一行 = 一段/PPT 一页)</legend>"
+"<textarea id='notes' rows=5></textarea><div class=slott id='notesn'></div>"
+"<label id='l_ntxt'>或上传 .txt(每行一页)</label><input type=file id='fnt' accept=.txt>"
+"<button id='b_ntxt' class=minor>读入 txt</button>"
+"<label id='l_npx'>或上传 .pptx 自动提取每页备注</label><input type=file id='fpx' accept=.pptx>"
+"<button id='b_npx' class=minor>提取备注</button>"
+"<button id='b_ns'>保存提词稿</button>"
+"<button id='b_nc' class='minor'>清除</button><span id='nm'></span>"
+"</fieldset>"
 "<fieldset><legend id='l_img'>图片(手动裁剪为正方形)</legend>"
 "<label id='l_avatar'>头像(输出 96x96)</label><input type='file' id='fav' accept='image/*'>"
 "<button id='b_upav' onclick=\"openCrop(fid('fav').files[0],'/api/avatar',96,'rgb565',fid('am'))\">裁剪并上传头像</button>"
@@ -95,6 +107,11 @@ static const char PORTAL_HTML[] =
 "card:'名片',name:'姓名',org:'公司',title:'岗位',hide:'隐藏公司/岗位',savecard:'保存名片',"
 "qrs:'二维码(4 槽,每槽可选 网页生成 或 上传图片)',ql:'槽位说明(如:微信)',"
 "qg:'网页生成',qu:'上传图片',qph:'链接或文本',upq:'裁剪并上传',saveqr:'保存二维码设置',"
+"notes:'提词稿(一行 = 一段/PPT 一页)',ntxt:'或上传 .txt(每行一页)',"
+"npx:'或上传 .pptx 自动提取每页备注',rdtxt:'读入 txt',expx:'提取备注',"
+"saven:'保存提词稿',nseg:'段',nempty:'内容为空',nbig:'超过 32KB 上限',"
+"perr:'pptx 解析失败(需 .pptx;老 .ppt 请先另存为 .pptx)',pnone:'未找到备注页',"
+"pbrowser:'浏览器太旧,不支持解压',"
 "img:'图片(手动裁剪为正方形)',avatar:'头像(输出 96x96)',upav:'裁剪并上传头像',clr:'清除',"
 "crop:'拖动虚线框选裁剪区;右下角手柄缩放(默认居中)',ok:'确认上传',cancel:'取消',"
 "done:'完成并联网',pick:'请先选择图片',dec:'图片解码失败,请换 JPG/PNG 试',"
@@ -105,6 +122,11 @@ static const char PORTAL_HTML[] =
 "card:'Card',name:'Name',org:'Company',title:'Title',hide:'Hide company/title',savecard:'Save card',"
 "qrs:'QR codes (4 slots; each: generated or uploaded image)',ql:'Caption (e.g. WeChat)',"
 "qg:'Generated',qu:'Uploaded image',qph:'Link or text',upq:'Crop && upload',saveqr:'Save QR setup',"
+"notes:'Notes (one line = one segment/slide)',ntxt:'or upload .txt (one line per slide)',"
+"npx:'or upload .pptx to extract speaker notes',rdtxt:'Load txt',expx:'Extract notes',"
+"saven:'Save notes',nseg:'segments',nempty:'empty',nbig:'over the 32KB limit',"
+"perr:'pptx parse failed (needs .pptx; re-save legacy .ppt first)',pnone:'no speaker notes found',"
+"pbrowser:'browser too old to inflate',"
 "img:'Images (manual square crop)',avatar:'Avatar (96x96 out)',upav:'Crop && upload avatar',clr:'Clear',"
 "crop:'Drag the dashed box to crop; corner handle resizes (centered by default)',ok:'Upload',cancel:'Cancel',"
 "done:'Finish && connect',pick:'Pick an image first',dec:'Decode failed, try JPG/PNG',"
@@ -128,6 +150,10 @@ static const char PORTAL_HTML[] =
 "fid('l_qg'+i).textContent=T('qg');fid('l_qu'+i).textContent=T('qu');"
 "fid('qt'+i).placeholder=T('qph');"
 "fid('b_upq'+i).textContent=T('upq');fid('b_clrq'+i).textContent=T('clr')}"
+"fid('l_notes').textContent=T('notes');fid('l_ntxt').textContent=T('ntxt');"
+"fid('l_npx').textContent=T('npx');fid('b_ntxt').textContent=T('rdtxt');"
+"fid('b_npx').textContent=T('expx');fid('b_ns').textContent=T('saven');"
+"fid('b_nc').textContent=T('clr');notesCount();"
 "fid('l_img').textContent=T('img');fid('l_avatar').textContent=T('avatar');"
 "fid('b_upav').textContent=T('upav');fid('b_clr1').textContent=T('clr');"
 "fid('l_crop').textContent=T('crop');fid('b_cropok').textContent=T('ok');"
@@ -150,13 +176,13 @@ static const char PORTAL_HTML[] =
 "fid('b_clrq'+i).style.display=up?'inline-block':'none'}"
 "function buildQr(){var h='';"
 "for(var i=0;i<4;i++){"
-"h+=\'<div class=slott>QR\'+(i+1)+\'</div>\'"
-"\'<label id=l_ql\'+i+\'></label><input id=ql\'+i+\' maxlength=23>\'"
-"\'<div class=chk><input type=radio name=qm\'+i+\' id=qg\'+i+\'><label id=l_qg\'+i+\' for=qg\'+i+\'></label>\'"
-"\'<input type=radio name=qm\'+i+\' id=qu\'+i+\'><label id=l_qu\'+i+\' for=qu\'+i+\'></label></div>\'"
-"\'<input id=qt\'+i+\'>\'"
-"\'<input type=file id=fq\'+i+\' accept=image/*>\'"
-"\'<button id=b_upq\'+i+\' class=minor></button>\'"
+"h+=\'<div class=slott>QR\'+(i+1)+\'</div>\'+"
+"\'<label id=l_ql\'+i+\'></label><input id=ql\'+i+\' maxlength=23>\'+"
+"\'<div class=chk><input type=radio name=qm\'+i+\' id=qg\'+i+\'><label id=l_qg\'+i+\' for=qg\'+i+\'></label>\'+"
+"\'<input type=radio name=qm\'+i+\' id=qu\'+i+\'><label id=l_qu\'+i+\' for=qu\'+i+\'></label></div>\'+"
+"\'<input id=qt\'+i+\'>\'+"
+"\'<input type=file id=fq\'+i+\' accept=image/*>\'+"
+"\'<button id=b_upq\'+i+\' class=minor></button>\'+"
 "\'<button id=b_clrq\'+i+\' class=minor></button><span id=q\'+i+\'m></span>\';"
 "}fid('qrs').innerHTML=h;"
 "for(var i=0;i<4;i++){(function(i){"
@@ -171,6 +197,63 @@ static const char PORTAL_HTML[] =
 "b.qr_label.push(fid('ql'+i).value);"
 "if(fid('qu'+i).checked)b.qr_mode|=(1<<i)}"
 "sv('/api/config',b,fid('qrm'))}"
+"/* ---- 提词稿:归一化成一行一段;txt 读入;pptx 备注提取(浏览器解包,零依赖) ---- */"
+"function notesText(){return fid('notes').value.split(/\\r?\\n/)"
+".map(function(s){return s.replace(/\\r$/,'')})"
+".filter(function(s){return s.length>0}).join('\\n')}"
+"function notesCount(){if(!fid('notesn'))return;"
+"var t=notesText();fid('notesn').textContent=(t?t.split('\\n').length:0)+' '+T('nseg')}"
+"function saveNotes(){var t=notesText();"
+"if(!t){msg(fid('nm'),T('nempty'),false);return}"
+"if(t.length>32768){msg(fid('nm'),T('nbig'),false);return}"
+"msg(fid('nm'),T('proc'),true);"
+"fetch('/api/notes',{method:'POST',headers:{'Content-Type':'text/plain'},body:t})"
+".then(function(r){return r.text()}).then(function(tx){msg(fid('nm'),tx,true)})"
+".catch(function(e){msg(fid('nm'),T('net'),false)})}"
+"function loadTxt(){var f=fid('fnt').files[0];if(!f){msg(fid('nm'),T('pick'),false);return}"
+"var r=new FileReader();"
+"r.onload=function(){fid('notes').value=r.result;notesCount();msg(fid('nm'),T('ok'),true)};"
+"r.readAsText(f,'utf-8')}"
+"function rdU16(b,o){return b[o]|(b[o+1]<<8)}"
+"function rdU32(b,o){return (b[o]|(b[o+1]<<8)|(b[o+2]<<16)+b[o+3]*16777216)>>>0}"
+"function loadPptx(){var f=fid('fpx').files[0];if(!f){msg(fid('nm'),T('pick'),false);return}"
+"if(typeof DecompressionStream=='undefined'){msg(fid('nm'),T('pbrowser'),false);return}"
+"msg(fid('nm'),T('proc'),true);"
+"var r=new FileReader();"
+"r.onload=function(){try{parsePptx(new Uint8Array(r.result))}"
+"catch(e){msg(fid('nm'),T('perr'),false)}};"
+"r.readAsArrayBuffer(f)}"
+"function parsePptx(b){"
+"var e=-1,i;"
+"for(i=b.length-22;i>=0&&i>b.length-22-65536;i--){"
+"if(b[i]==0x50&&b[i+1]==0x4b&&b[i+2]==0x05&&b[i+3]==0x06){e=i;break}}"
+"if(e<0)throw 0;"
+"var n=rdU16(b,e+10),cd=rdU32(b,e+16),items=[];"
+"for(var k=0;k<n;k++){"
+"if(!(b[cd]==0x50&&b[cd+1]==0x4b&&b[cd+2]==0x01&&b[cd+3]==0x02))break;"
+"var cs=rdU32(b,cd+20),nl=rdU16(b,cd+28),el=rdU16(b,cd+30),cl=rdU16(b,cd+32),lho=rdU32(b,cd+42);"
+"var name='';"
+"for(var j=0;j<nl;j++)name+=String.fromCharCode(b[cd+46+j]);"
+"items.push({n:name,cs:cs,lho:lho});cd+=46+nl+el+cl}"
+"var rx=/^ppt\\/notesSlides\\/notesSlide\\d+\\.xml$/;"
+"var slides=items.filter(function(x){return rx.test(x.n)});"
+"slides.sort(function(a,c){"
+"return parseInt(a.n.replace(/[^\\d]/g,''),10)-parseInt(c.n.replace(/[^\\d]/g,''),10)});"
+"if(!slides.length){msg(fid('nm'),T('pnone'),false);return}"
+"var outs=[],done=0;"
+"slides.forEach(function(x,ix){"
+"var hl=rdU16(b,x.lho+26)+rdU16(b,x.lho+28);"
+"var data=b.subarray(x.lho+30+hl,x.lho+30+hl+x.cs);"
+"new Response(new Blob([data]).stream().pipeThrough("
+"new DecompressionStream('deflate-raw'))).arrayBuffer()"
+".then(function(ab){"
+"var xml=new TextDecoder('utf-8').decode(ab);"
+"var parts=xml.match(/<a:t>[^<]*<\\/a:t>/g)||[];"
+"outs[ix]=parts.map(function(s){return s.replace(/<\\/?a:t>/g,'')}).join(' ');"
+"if(++done==slides.length){"
+"fid('notes').value=outs.filter(function(s){return s}).join('\\n');"
+"notesCount();msg(fid('nm'),T('ok'),true)}})"
+".catch(function(){msg(fid('nm'),T('perr'),false)})})}"
 "function finish(){sv('/api/done',{},fid('dm'))}"
 "function clr(u,m){msg(m,T('proc'),true);"
 "fetch(u,{method:'POST'}).then(function(r){return r.text()})"
@@ -230,6 +313,13 @@ static const char PORTAL_HTML[] =
 ".catch(function(){fid('beat').textContent=T('dead');fid('beat').style.color='#ff6b6b'})}"
 "setInterval(beat,10000);"
 "buildQr();"
+"fid('notes').addEventListener('input',notesCount);"
+"fid('b_ntxt').addEventListener('click',loadTxt);"
+"fid('b_npx').addEventListener('click',loadPptx);"
+"fid('b_ns').addEventListener('click',saveNotes);"
+"fid('b_nc').addEventListener('click',function(){fid('notes').value='';notesCount();clr('/api/notes',fid('nm'))});"
+"fetch('/api/notes').then(function(r){return r.text()})"
+".then(function(t){fid('notes').value=t||'';notesCount()}).catch(function(){notesCount()});"
 "fetch('/api/config').then(function(r){return r.json()}).then(function(c){"
 "fid('ssid').value=c.sta_ssid||'';fid('bname').value=c.name||'';"
 "fid('borg').value=c.org||'';fid('btitle').value=c.title||'';"
@@ -441,6 +531,66 @@ static esp_err_t post_qr1(httpd_req_t *req) { return upload_asset(req, "qr1.img"
 static esp_err_t post_qr2(httpd_req_t *req) { return upload_asset(req, "qr2.img", 128 * 128 / 8); }
 static esp_err_t post_qr3(httpd_req_t *req) { return upload_asset(req, "qr3.img", 128 * 128 / 8); }
 
+// ---- 提词稿(notes.txt:UTF-8 纯文本,一行 = 一段,上限 32KB) ----
+
+#define NOTES_MAX_BYTES 32768
+
+static esp_err_t post_notes(httpd_req_t *req)
+{
+    if (!app_store_ready()) {
+        return send_text(req, "存储不可用 / Storage unavailable");
+    }
+    int len = req->content_len;
+    if (len < 0 || len > NOTES_MAX_BYTES) {
+        return send_text(req, "太长(上限 32KB) / Too long (32KB max)");
+    }
+    if (len == 0) {
+        app_store_write("notes.txt", NULL, 0);
+        return send_text(req, "已清除 / Cleared");
+    }
+    // 32KB 放不进栈上缓冲:流式 recv 直写文件,半截即回滚
+    FILE *f = fopen("/store/notes.txt", "wb");
+    if (!f) {
+        ESP_LOGW(TAG, "notes.txt 打开失败(errno=%d)", errno);
+        return send_text(req, "写入失败 / Write failed");
+    }
+    char buf[512];
+    int remaining = len, got = 0, failed = 0;
+    while (remaining > 0) {
+        int n = httpd_req_recv(req, buf, remaining > (int)sizeof(buf) ? (int)sizeof(buf) : remaining);
+        if (n <= 0) { failed = 1; break; }
+        if (fwrite(buf, 1, n, f) != (size_t)n) { failed = 1; break; }
+        remaining -= n;
+        got += n;
+    }
+    fclose(f);
+    if (failed) {
+        ESP_LOGW(TAG, "notes.txt 上传中断,已回滚(收 %d/%d)", got, len);
+        app_store_write("notes.txt", NULL, 0);
+        return send_text(req, "接收中断,已回滚 / Interrupted, rolled back");
+    }
+    ESP_LOGI(TAG, "提词稿已保存(%d 字节)", len);
+    return send_text(req, "已保存 / Saved");
+}
+
+static esp_err_t get_notes(httpd_req_t *req)
+{
+    httpd_resp_set_type(req, "text/plain; charset=utf-8");
+    if (!app_store_ready()) return httpd_resp_send(req, "", 0);
+    FILE *f = fopen("/store/notes.txt", "rb");
+    if (!f) return httpd_resp_send(req, "", 0);
+    char buf[512];
+    size_t n;
+    while ((n = fread(buf, 1, sizeof(buf), f)) > 0) {
+        if (httpd_resp_send_chunk(req, buf, n) != ESP_OK) {
+            fclose(f);
+            return ESP_FAIL;
+        }
+    }
+    fclose(f);
+    return httpd_resp_send_chunk(req, NULL, 0);
+}
+
 static const httpd_uri_t URIS[] = {
     { .uri = "/",          .method = HTTP_GET,  .handler = get_index  },
     { .uri = "/api/config",.method = HTTP_GET,  .handler = get_config },
@@ -452,6 +602,8 @@ static const httpd_uri_t URIS[] = {
     { .uri = "/api/qr1",   .method = HTTP_POST, .handler = post_qr1   },
     { .uri = "/api/qr2",   .method = HTTP_POST, .handler = post_qr2   },
     { .uri = "/api/qr3",   .method = HTTP_POST, .handler = post_qr3   },
+    { .uri = "/api/notes", .method = HTTP_GET,  .handler = get_notes  },
+    { .uri = "/api/notes", .method = HTTP_POST, .handler = post_notes },
 };
 
 static httpd_handle_t s_server;

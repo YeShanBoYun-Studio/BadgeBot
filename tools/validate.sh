@@ -40,6 +40,10 @@ run_static_checks() {
         tests/test_app_blehid.c main/app_blehid_keys.c \
         -o "${test_dir}/test_app_blehid"
     "${test_dir}/test_app_blehid"
+    "${CC:-cc}" -std=c11 -Wall -Wextra -Werror -Imain \
+        tests/test_prompter_model.c main/app_prompter_model.c \
+        -o "${test_dir}/test_prompter_model"
+    "${test_dir}/test_prompter_model"
     python3 tests/test_verify_firmware.py
     rm -rf "${test_dir}"
     echo "Host tests: PASS"

@@ -16,3 +16,6 @@ esp_err_t app_store_write(const char *name, const void *data, size_t len);
 
 // 读取资产文件到 buf(不超过 buf_len),返回实际字节数;-1 = 不存在或失败。
 int app_store_read(const char *name, void *buf, size_t buf_len);
+
+// 查询资产文件字节数;-1 = 不存在或失败(按需精确分配读缓冲用)。
+long app_store_size(const char *name);

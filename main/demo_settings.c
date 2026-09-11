@@ -211,6 +211,7 @@ static void do_factory_reset(void) {
             app_store_write(name, NULL, 0);
         }
         app_store_write("qr_b.img", NULL, 0);   // 旧版单二维码文件一并清理
+        app_store_write("notes.txt", NULL, 0);  // 讲稿同属用户上传内容
     }
     s_cfg = *app_config_get();
     ui_pixel_set_theme(s_cfg.theme);

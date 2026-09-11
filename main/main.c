@@ -36,6 +36,7 @@ enum {
     DEMO_AUDIO,
     DEMO_BATTERY,
     DEMO_HID,
+    DEMO_PROMPTER,
     DEMO_BLE,
     DEMO_LOW_POWER,
     DEMO_COUNT,
@@ -50,6 +51,7 @@ static const demo_entry_t DEMOS[DEMO_COUNT] = {
     [DEMO_AUDIO]     = { "Audio",     "音频",   demo_audio_enter,     demo_audio_exit,     demo_audio_key     },
     [DEMO_BATTERY]   = { "Battery",   "电池",   demo_battery_enter,   demo_battery_exit,   demo_battery_key   },
     [DEMO_HID]       = { "Turner",    "翻页器", demo_hid_enter,       demo_hid_exit,       demo_hid_key       },
+    [DEMO_PROMPTER]  = { "Prompter",  "提词器", demo_prompter_enter,  demo_prompter_exit,  demo_prompter_key  },
     [DEMO_BLE]       = { "BLE",       "蓝牙",   demo_ble_enter,       demo_ble_exit,       demo_ble_key       },
     [DEMO_LOW_POWER] = { "Low Power", "低功耗", demo_low_power_enter, demo_low_power_exit, demo_low_power_key },
 };
@@ -279,6 +281,7 @@ void app_main(void) {
     s_ok[DEMO_AUDIO]     = (bsp_audio_init() == ESP_OK);
     s_ok[DEMO_BATTERY]   = (bsp_battery_init() == ESP_OK);
     s_ok[DEMO_HID]       = true;
+    s_ok[DEMO_PROMPTER]  = true;
     s_ok[DEMO_BLE]       = true;
     s_ok[DEMO_LOW_POWER] = true;
     app_config_apply();                                       // 音量要等 audio 初始化后再设

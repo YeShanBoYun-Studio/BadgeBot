@@ -7,6 +7,7 @@ idf_component_register(
          "app_pet_model.c"
          "app_blehid.c"
          "app_blehid_keys.c"
+         "app_prompter_model.c"
          "app_portal.c"
          "app_store.c"
          "app_wifi.c"
@@ -26,6 +27,7 @@ idf_component_register(
          "demo_wifi.c"
          "demo_ble.c"
          "demo_hid.c"
+         "demo_prompter.c"
          "demo_low_power.c"
     INCLUDE_DIRS "."
     REQUIRES bsp bt esp_event esp_hw_support esp_http_server esp_netif

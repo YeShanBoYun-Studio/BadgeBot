@@ -71,3 +71,16 @@ int app_store_read(const char *name, void *buf, size_t buf_len)
     fclose(f);
     return (int)n;
 }
+
+long app_store_size(const char *name)
+{
+    if (!s_ready) return -1;
+    char path[48];
+    snprintf(path, sizeof(path), "/store/%s", name);
+    FILE *f = fopen(path, "rb");
+    if (!f) return -1;
+    long n = -1;
+    if (fseek(f, 0, SEEK_END) == 0) n = ftell(f);
+    fclose(f);
+    return n;
+}

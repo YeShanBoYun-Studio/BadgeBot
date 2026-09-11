@@ -20,6 +20,14 @@ extern "C" {
     X(TOGGLE,       "开关",                  "Toggle") \
     X(SEND,         "翻页",                  "Turn") \
     X(KEYMAP,       "键位",                  "Key map") \
+    X(MODE,         "模式",                  "Mode") \
+    X(TURN,         "翻段",                  "Segment") \
+    X(SPEED,        "速度",                  "Speed") \
+    X(PAUSE,        "暂停",                  "Pause") \
+    X(MODE_LK,      "联动",                  "Linked") \
+    X(MODE_AUTO,    "自动",                  "Auto") \
+    X(PAUSED,       "已暂停",                "Paused") \
+    X(NO_NOTES,     "未上传讲稿\n门户「提词稿」保存", "No notes\nsave via portal") \
     X(HID_WAIT,     "等待电脑配对…",         "Waiting for pairing…") \
     X(HID_CONN,     "已连接,配对中…",        "Connected, pairing…") \
     X(HID_READY,    "已就绪,可翻页",         "Ready - turn away") \
