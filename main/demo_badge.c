@@ -801,6 +801,10 @@ static void build_pet(const app_config_t *cfg, const ui_theme_t *th) {
     // 进页先结算离线时长
     if (app_pet_initialized() && app_clock_synced()) {
         pet_model_tick(app_pet_mut(), (uint32_t)time(NULL));
+        // 试验期约定:进页把四项数值拉满并唤醒,保证动作/小游戏随时可测
+        pet_state_t *p = app_pet_mut();
+        p->hunger = p->happy = p->clean = p->energy = PET_STAT_MAX;
+        p->flags &= (uint8_t)~PET_FLAG_ASLERP;
         app_pet_save();
     }
 
