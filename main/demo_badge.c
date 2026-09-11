@@ -774,11 +774,6 @@ static void game_begin(int sel) {
     game_refresh_text();
 }
 
-// OK 长按退出动作模式时,若在游戏中则中止(开局扣的精力不退)
-static void game_cancel(void) {
-    if (s_game != GAME_NONE) game_stop();
-}
-
 // 宠物页每拍(700ms):帧动画 + 周期性数值结算;猜方向游戏的节拍也挂在这里
 static void pet_tick(lv_timer_t *t) {
     (void)t;
@@ -968,8 +963,19 @@ void demo_badge_key(bsp_btn_t btn, bsp_btn_ev_t ev) {
     }
     if (app_config_get()->layout == APP_LAYOUT_PET) {
         if (btn == BSP_BTN_OK && ev == BSP_BTN_LONG) {
+            // 游戏层一级返回:对局 → 游戏菜单 → 动作列表 → 退出动作模式;
+            // 短按 OK 在这一整层里都不会碰菜单,避免手滑直接逃出页面
+            if (s_game != GAME_NONE) {
+                if (s_tap_timer) { lv_timer_delete(s_tap_timer); s_tap_timer = NULL; }
+                bool in_game = (s_game != GAME_SELECT);
+                s_game = in_game ? GAME_SELECT : GAME_NONE;
+                s_phase = 0;
+                if (s_game == GAME_NONE) pet_render_sprite();
+                else game_render();
+                pet_refresh_text();
+                return;
+            }
             s_pet_adjust = !s_pet_adjust;   // OK 长按 = 进/出动作模式
-            if (!s_pet_adjust) game_cancel();  // 退出动作模式时中止进行中的游戏
             pet_refresh_text();
             return;
         }
