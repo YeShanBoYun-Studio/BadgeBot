@@ -181,6 +181,24 @@ static void test_games(void)
     assert(s.happy == 20);
 }
 
+static void test_stage_without_clock(void)
+{
+    // 未校时(now=0 哨兵):已出生宠物按已结算的 age_min 推阶段,不显示回蛋
+    pet_state_t s;
+    pet_model_init(&s, 1000000);
+    pet_model_tick(&s, s.hatch_epoch + 30 * 60);      // 孵化后 30 分钟:幼年
+    assert(s.age_min >= 28);
+    assert(pet_model_stage(&s, 0) == PET_STAGE_BABY);
+
+    s.age_min = 600;                                   // 直接构造已结算龄
+    assert(pet_model_stage(&s, 0) == PET_STAGE_CHILD);
+    s.age_min = 20000;
+    assert(pet_model_stage(&s, 0) == PET_STAGE_ADULT);
+
+    // 真实时钟下未到孵化时刻,仍然是蛋
+    assert(pet_model_stage(&s, s.hatch_epoch - 1) == PET_STAGE_EGG);
+}
+
 int main(void)
 {
     test_init_and_egg();
@@ -190,5 +208,6 @@ int main(void)
     test_sleep_energy_and_poop();
     test_mood();
     test_games();
+    test_stage_without_clock();
     return 0;
 }

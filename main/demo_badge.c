@@ -513,8 +513,7 @@ static void pet_refresh_text(void) {
 
     // 心情行
     const char *mood;
-    if (!app_clock_synced()) mood = ui_text(UI_T_PET_MOOD_NA);
-    else if (pet_model_stage(p, now) == PET_STAGE_EGG) mood = ui_text(UI_T_PET_HATCH);
+    if (pet_model_stage(p, now) == PET_STAGE_EGG) mood = ui_text(UI_T_PET_HATCH);
     else {
         switch (pet_model_mood(p)) {
         case PET_MOOD_ASLEEP: mood = ui_text(UI_T_PET_MOOD_ASLEEP); break;
@@ -751,7 +750,7 @@ static void game_open_select(void) {
 
 static void game_begin(int sel) {
     pet_state_t *p = app_pet_mut();
-    if (!app_clock_synced() || !pet_model_game_start(p)) {
+    if (!pet_model_game_start(p)) {
         lv_label_set_text(s_pet_action, ui_text(UI_T_G_NOENERGY));
         return;
     }
@@ -798,13 +797,9 @@ static void build_pet(const app_config_t *cfg, const ui_theme_t *th) {
     if (!app_pet_initialized() && app_clock_synced()) {
         app_pet_birth((uint32_t)time(NULL));
     }
-    // 进页先结算离线时长
+    // 进页先结算离线时长(需要真实时钟;未校时只读状态,不做衰减)
     if (app_pet_initialized() && app_clock_synced()) {
         pet_model_tick(app_pet_mut(), (uint32_t)time(NULL));
-        // 试验期约定:进页把四项数值拉满并唤醒,保证动作/小游戏随时可测
-        pet_state_t *p = app_pet_mut();
-        p->hunger = p->happy = p->clean = p->energy = PET_STAT_MAX;
-        p->flags &= (uint8_t)~PET_FLAG_ASLERP;
         app_pet_save();
     }
 
@@ -872,7 +867,7 @@ static void pet_key(bsp_btn_t btn, bsp_btn_ev_t ev) {
         pet_refresh_text();
         return;
     }
-    if (btn != BSP_BTN_OK || !app_clock_synced()) return;
+    if (btn != BSP_BTN_OK) return;
     pet_state_t *p = app_pet_mut();
     uint32_t now = (uint32_t)time(NULL);
     bool did = false;

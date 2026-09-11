@@ -56,6 +56,7 @@ void pet_model_init(pet_state_t *s, uint32_t now);
 // 结算衰减/便便/孵化时长;now 必须是有效 epoch(已校时)。离线时长按 3 天封顶。
 void pet_model_tick(pet_state_t *s, uint32_t now);
 
+// 阶段查询;now=0 表示未校时,按已结算的 age_min 推阶段(蛋除外)。
 pet_stage_t pet_model_stage(const pet_state_t *s, uint32_t now);
 pet_mood_t pet_model_mood(const pet_state_t *s);
 

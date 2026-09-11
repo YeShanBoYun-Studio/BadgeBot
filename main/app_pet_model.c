@@ -105,14 +105,23 @@ void pet_model_tick(pet_state_t *s, uint32_t now)
     if (sleeping && s->energy >= PET_STAT_MAX) s->flags &= (uint8_t)~PET_FLAG_ASLERP;
 }
 
+static pet_stage_t stage_from_age_min(uint32_t age_min)
+{
+    if (age_min < BABY_MINUTES) return PET_STAGE_BABY;
+    if (age_min < CHILD_MINUTES) return PET_STAGE_CHILD;
+    return PET_STAGE_ADULT;
+}
+
 pet_stage_t pet_model_stage(const pet_state_t *s, uint32_t now)
 {
     if (s->hatch_epoch == UINT32_MAX) return PET_STAGE_EGG;
+    if (now == 0) {
+        // 未校时(now=0 哨兵):按已结算的 age_min 推阶段,
+        // 别让已出生的宠物在离线时显示回蛋。
+        return stage_from_age_min(s->age_min);
+    }
     if (now < s->hatch_epoch) return PET_STAGE_EGG;
-    uint32_t age = now - s->hatch_epoch;
-    if (age < (uint32_t)BABY_MINUTES * 60) return PET_STAGE_BABY;
-    if (age < (uint32_t)CHILD_MINUTES * 60) return PET_STAGE_CHILD;
-    return PET_STAGE_ADULT;
+    return stage_from_age_min((now - s->hatch_epoch) / 60);
 }
 
 pet_mood_t pet_model_mood(const pet_state_t *s)
