@@ -10,6 +10,8 @@ idf_component_register(
          "app_prompter_model.c"
          "app_portal.c"
          "app_store.c"
+         "app_voice.c"
+         "app_voice_model.c"
          "app_wifi.c"
          "ui_pixel.c"
          "ui_text.c"
@@ -28,8 +30,9 @@ idf_component_register(
          "demo_ble.c"
          "demo_hid.c"
          "demo_prompter.c"
+         "demo_voice.c"
          "demo_low_power.c"
     INCLUDE_DIRS "."
-    REQUIRES bsp bt esp_event esp_hw_support esp_http_server esp_netif
+    REQUIRES bsp bt esp_event esp_hw_support esp_http_client esp_http_server esp_netif
              esp_timer esp_wifi fatfs json nvs_flash wear_levelling dns_server
 )

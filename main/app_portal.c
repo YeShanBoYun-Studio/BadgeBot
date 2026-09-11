@@ -77,6 +77,12 @@ static const char PORTAL_HTML[] =
 "<div id='qrs'></div>"
 "<button id='b_saveqr' onclick='saveQr()'>保存二维码设置</button><span id='qrm'></span>"
 "</fieldset>"
+"<fieldset><legend id='l_vurl'>语音(电脑后端地址)</legend>"
+"<label id='l_vurl2'>后端 URL(http://电脑IP:端口)</label><input id='vurl' placeholder=http://192.168.1.10:8722>"
+"<button id='b_savevurl' onclick='saveVoice()'>保存语音地址</button><span id='vm'></span>"
+"<p id='vhint' class='hint'>电脑上先运行 tools/badge_voice.py,再把它的地址填到这里;"
+"徽章上说话会传到这台电脑识别,文字直接打进当前窗口。</p>"
+"</fieldset>"
 "<fieldset><legend id='l_notes'>提词稿(一行 = 一段/PPT 一页)</legend>"
 "<textarea id='notes' rows=5></textarea><div class=slott id='notesn'></div>"
 "<label id='l_ntxt'>或上传 .txt(每行一页)</label><input type=file id='fnt' accept=.txt>"
@@ -106,6 +112,8 @@ static const char PORTAL_HTML[] =
 "zh:{wifi:'Wi-Fi(仅支持 2.4GHz)',ssid:'SSID',pass:'密码',savewifi:'保存 Wi-Fi',"
 "card:'名片',name:'姓名',org:'公司',title:'岗位',hide:'隐藏公司/岗位',savecard:'保存名片',"
 "qrs:'二维码(4 槽,每槽可选 网页生成 或 上传图片)',ql:'槽位说明(如:微信)',"
+"vurl:'语音(电脑后端地址)',vurl2:'后端 URL(http://电脑IP:端口)',savevurl:'保存语音地址',"
+"vhint:'电脑上先运行 tools/badge_voice.py,再把它的地址填到这里;徽章上说话会传到这台电脑识别,文字直接打进当前窗口。',"
 "qg:'网页生成',qu:'上传图片',qph:'链接或文本',upq:'裁剪并上传',saveqr:'保存二维码设置',"
 "notes:'提词稿(一行 = 一段/PPT 一页)',ntxt:'或上传 .txt(每行一页)',"
 "npx:'或上传 .pptx 自动提取每页备注',rdtxt:'读入 txt',expx:'提取备注',"
@@ -121,6 +129,8 @@ static const char PORTAL_HTML[] =
 "en:{wifi:'Wi-Fi (2.4GHz only)',ssid:'SSID',pass:'Password',savewifi:'Save Wi-Fi',"
 "card:'Card',name:'Name',org:'Company',title:'Title',hide:'Hide company/title',savecard:'Save card',"
 "qrs:'QR codes (4 slots; each: generated or uploaded image)',ql:'Caption (e.g. WeChat)',"
+"vurl:'Voice (PC backend URL)',vurl2:'Backend URL (http://pc-ip:port)',savevurl:'Save voice URL',"
+"vhint:'Run tools/badge_voice.py on the PC first, then enter its address here; speech on the badge is recognized on that PC and typed into the focused window.',"
 "qg:'Generated',qu:'Uploaded image',qph:'Link or text',upq:'Crop && upload',saveqr:'Save QR setup',"
 "notes:'Notes (one line = one segment/slide)',ntxt:'or upload .txt (one line per slide)',"
 "npx:'or upload .pptx to extract speaker notes',rdtxt:'Load txt',expx:'Extract notes',"
@@ -146,6 +156,8 @@ static const char PORTAL_HTML[] =
 "fid('l_hide').textContent=T('hide');"
 "fid('b_savecard').textContent=T('savecard');"
 "fid('l_qrs').textContent=T('qrs');fid('b_saveqr').textContent=T('saveqr');"
+"fid('l_vurl').textContent=T('vurl');fid('l_vurl2').textContent=T('vurl2');"
+"fid('b_savevurl').textContent=T('savevurl');fid('vhint').textContent=T('vhint');"
 "for(var i=0;i<4;i++){fid('l_ql'+i).textContent=T('ql');"
 "fid('l_qg'+i).textContent=T('qg');fid('l_qu'+i).textContent=T('qu');"
 "fid('qt'+i).placeholder=T('qph');"
@@ -168,6 +180,7 @@ static const char PORTAL_HTML[] =
 "function saveWifi(){sv('/api/wifi',{ssid:fid('ssid').value,pass:fid('pass').value},fid('wm'))}"
 "function saveCfg(){sv('/api/config',{name:fid('bname').value,org:fid('borg').value,"
 "title:fid('btitle').value,hide:fid('bhide').checked},fid('cm'))}"
+"function saveVoice(){sv('/api/config',{voice_url:fid('vurl').value},fid('vm'))}"
 "/* ---- 二维码 4 槽:每槽独立选择 生成(文本) 或 上传图片;HTML 无引号写法省转义 ---- */"
 "function qmode(i){var up=fid('qu'+i).checked;"
 "fid('qt'+i).style.display=up?'none':'block';"
@@ -323,7 +336,7 @@ static const char PORTAL_HTML[] =
 "fetch('/api/config').then(function(r){return r.json()}).then(function(c){"
 "fid('ssid').value=c.sta_ssid||'';fid('bname').value=c.name||'';"
 "fid('borg').value=c.org||'';fid('btitle').value=c.title||'';"
-"fid('bhide').checked=!!c.hide;"
+"fid('bhide').checked=!!c.hide;fid('vurl').value=c.voice_url||'';"
 "for(var i=0;i<4;i++){fid('qt'+i).value=(c.qr_text||[])[i]||'';"
 "fid('ql'+i).value=(c.qr_label||[])[i]||'';"
 "var up=((c.qr_mode||0)>>i)&1;fid('qg'+i).checked=!up;fid('qu'+i).checked=up;qmode(i)}"
@@ -361,6 +374,7 @@ static esp_err_t get_config(httpd_req_t *req)
         cJSON_AddItemToArray(ql, cJSON_CreateString(c->qr_label[i]));
     }
     cJSON_AddNumberToObject(j, "qr_mode", c->qr_mode);
+    cJSON_AddStringToObject(j, "voice_url", c->voice_url);
     cJSON_AddBoolToObject(j, "hide", c->hide_org_title);
     cJSON_AddNumberToObject(j, "layout", c->layout);
     cJSON_AddNumberToObject(j, "theme", c->theme);
@@ -422,6 +436,8 @@ static esp_err_t post_config(httpd_req_t *req)
                 strlcpy(c.qr_label[i], s->valuestring, sizeof(c.qr_label[i]));
         }
     }
+    if ((item = cJSON_GetObjectItem(j, "voice_url")) && cJSON_IsString(item))
+        strlcpy(c.voice_url, item->valuestring, sizeof(c.voice_url));
     if ((item = cJSON_GetObjectItem(j, "qr_mode")) && cJSON_IsNumber(item))
         c.qr_mode = (uint8_t)(item->valueint & 0x0F);
     if ((item = cJSON_GetObjectItem(j, "hide"))  && cJSON_IsBool(item))

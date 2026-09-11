@@ -12,6 +12,7 @@
 #define APP_CFG_QR_LEN      128   // 二维码槽文本上限(URL/任意文本)
 #define APP_CFG_QR_SLOTS    4     // 二维码槽位数量(2x2 网格)
 #define APP_CFG_QRLBL_LEN   24    // 二维码槽标签上限(如"微信"/"主页")
+#define APP_CFG_URL_LEN     128   // 语音后端地址上限(http://host:port[/path])
 #define APP_CFG_BL_MIN      10    // 背光下限(%),0 会让屏幕全黑、无法操作
 #define APP_CFG_BL_MAX      100
 #define APP_CFG_BL_STEP     10
@@ -45,6 +46,7 @@ typedef struct {
     uint8_t screen_off_min;       // 0..APP_CFG_OFF_MAX,0 = 常亮
     bool    boot_badge;           // 开机直接进工牌主页,否则进菜单
     uint8_t hid_arrows;           // 翻页器键位:0 = PgUp/PgDn,1 = 左/右方向键
+    char    voice_url[APP_CFG_URL_LEN]; // 语音后端(http://),空 = 语音功能未配置
 } app_config_t;
 
 // ---- 纯逻辑(app_config_model.c) ----

@@ -95,7 +95,21 @@ extern "C" {
     X(G_NOENERGY,    "精力不足,玩不动",      "Too tired to play") \
     X(PORTAL_STARTING, "正在启动热点…",      "Starting hotspot…") \
     X(PORTAL_DONE,  "配网已结束,按 OK 返回", "Portal closed - press OK") \
-    X(PORTAL_URL,   "手机浏览器打开 %s",     "Open %s in a browser")
+    X(PORTAL_URL,   "手机浏览器打开 %s",     "Open %s in a browser") \
+    X(VOICE_ACT,    "说话",                  "Speak") \
+    X(VOICE_READY,  "按 OK 开始",            "Press OK to speak") \
+    X(VOICE_NET,    "正在连 Wi-Fi…",         "Connecting Wi-Fi…") \
+    X(VOICE_REC,    "录音中",                "Recording") \
+    X(VOICE_TAP_STOP, "再按 OK 发送",        "OK again to send") \
+    X(VOICE_SENDING, "识别中…",              "Recognizing…") \
+    X(VOICE_DONE,   "已注入电脑",            "Typed on PC") \
+    X(VOICE_NOURL,  "先在门户「语音」里填后端地址", "Set the voice URL in the portal") \
+    X(VOICE_E_NET,  "连不上 Wi-Fi",          "Wi-Fi failed") \
+    X(VOICE_E_CONN, "连不上语音服务",        "Server unreachable") \
+    X(VOICE_E_SEND, "传输中断",              "Upload interrupted") \
+    X(VOICE_E_HTTP, "服务出错",              "Server error") \
+    X(VOICE_E_EMPTY, "没有识别结果",         "No text recognized") \
+    X(VOICE_E_MIC,  "麦克风不可用",          "Microphone unavailable")
 
 typedef enum {
 #define X(id, zh, en) UI_T_##id,

@@ -20,6 +20,13 @@ bool app_wifi_connected(void);
 esp_err_t app_wifi_suspend(void);
 void app_wifi_resume(void);
 
+// ---- 语音等在线功能的按需联网 ----
+// 请求保持 STA 在线:脉冲任务立刻联网并一直保持,直到 app_wifi_hold_close()。
+// 供语音上传这类"来一单用一阵"的功能;配网进行中返回 ESP_ERR_INVALID_STATE。非阻塞。
+// 由同一个功能事务里配对调用 close(连接的建立与释放都归它管)。
+esp_err_t app_wifi_hold_open(void);
+void app_wifi_hold_close(void);
+
 // ---- 配网模式(SoftAP + HTTP 门户) ----
 // 请求进入配网模式:脉冲任务会在安全点把 Wi-Fi 切到 AP(BadgeBot-XXXX,随机密码),
 // 并启动 HTTP 门户;超时或 app_wifi_portal_close() 后自动切回脉冲。非阻塞。

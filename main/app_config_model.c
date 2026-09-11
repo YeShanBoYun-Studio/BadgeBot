@@ -43,6 +43,7 @@ bool app_config_sanitize(app_config_t *cfg) {
     changed |= terminate(cfg->name, sizeof(cfg->name));
     changed |= terminate(cfg->org, sizeof(cfg->org));
     changed |= terminate(cfg->title, sizeof(cfg->title));
+    changed |= terminate(cfg->voice_url, sizeof(cfg->voice_url));
     for (int i = 0; i < APP_CFG_QR_SLOTS; i++) {
         changed |= terminate(cfg->qr_text[i], sizeof(cfg->qr_text[i]));
         changed |= terminate(cfg->qr_label[i], sizeof(cfg->qr_label[i]));

@@ -42,10 +42,14 @@ static EventGroupHandle_t s_events;
 #define EV_EXIT    BIT1
 #define EV_SUSPEND BIT2   // BLE 翻页器要独占无线电:脉冲任务停驱动并释放内存
 #define EV_RESUME  BIT3   // 翻页器退出:脉冲任务重新初始化驱动
+#define EV_HOLD    BIT4   // 语音等在线功能请求联网并保持(hold_serve_cycle 承接)
 
 // 翻页器挂起:请求置位给 pulse 循环提前打断;suspend_sem 用于等任务完成 deinit
 static volatile bool s_suspend_req;
 static SemaphoreHandle_t s_suspend_sem;
+
+// 按需联网请求:置位期间 STA 保持连接;由语音 worker 在事务结束时清除
+static volatile bool s_hold_req;
 
 // 配网模式状态(任务写,页面/HTTP 读;读取处不要求强一致)
 static volatile bool s_portal_active;
@@ -79,15 +83,38 @@ static void pulse_connect_cycle(void)
     if (s_connected) {
         ESP_LOGI(TAG, "已连接,保持 %d 秒(校时窗口)", CONNECT_HOLD_MS / 1000);
         int held = 0;
-        while (held < CONNECT_HOLD_MS && !s_suspend_req) {
-            vTaskDelay(pdMS_TO_TICKS(1000));
-            held += 1000;
+        // hold 请求让常规保持窗口立即让位:EV_HOLD 的承接循环马上接管连接
+        while (held < CONNECT_HOLD_MS && !s_suspend_req && !s_hold_req) {
+            vTaskDelay(pdMS_TO_TICKS(250));
+            held += 250;
         }
     } else {
         ESP_LOGW(TAG, "连接失败(没有已存凭据或信号不佳),%d 分钟后重试",
                  RETRY_INTERVAL_MS / 60000);
     }
     esp_wifi_disconnect();
+}
+
+// ---- 按需联网(语音) ----
+
+// 承接 hold 请求:确保连上,然后一直保持到请求方关闭;结束时断开归位脉冲节奏。
+static void hold_serve_cycle(void)
+{
+    if (!s_connected) {
+        ESP_LOGI(TAG, "按需联网请求(语音等在线功能)");
+        esp_wifi_connect();
+        int waited = 0;
+        while (!s_connected && waited < CONNECT_TIMEOUT_MS && !s_suspend_req && s_hold_req) {
+            vTaskDelay(pdMS_TO_TICKS(100));
+            waited += 100;
+        }
+    }
+    if (s_connected) {
+        while (s_connected && s_hold_req && !s_suspend_req) {
+            vTaskDelay(pdMS_TO_TICKS(250));
+        }
+        esp_wifi_disconnect();
+    }
 }
 
 // ---- 配网 SoftAP ----
@@ -226,8 +253,8 @@ static void wifi_task(void *arg)
 
     pulse_connect_cycle();   // 开机先脉冲一次,尽快校时,不让用户等满一小时
     for (;;) {
-        // 等待下一次脉冲(期间收到配网/挂起请求则立即切换)
-        EventBits_t bits = xEventGroupWaitBits(s_events, EV_PORTAL | EV_EXIT | EV_SUSPEND,
+        // 等待下一次脉冲(期间收到配网/挂起/按需联网请求则立即切换)
+        EventBits_t bits = xEventGroupWaitBits(s_events, EV_PORTAL | EV_EXIT | EV_SUSPEND | EV_HOLD,
                                                pdTRUE, pdFALSE,
                                                pdMS_TO_TICKS(RESYNC_INTERVAL_MS));
         if (bits & EV_PORTAL) {
@@ -256,6 +283,10 @@ static void wifi_task(void *arg)
             esp_wifi_start();
             continue;
         }
+        if (bits & EV_HOLD) {
+            hold_serve_cycle();
+            continue;
+        }
 
         pulse_connect_cycle();
     }
@@ -281,6 +312,7 @@ bool app_wifi_connected(void)
 esp_err_t app_wifi_suspend(void)
 {
     if (s_portal_active) return ESP_ERR_INVALID_STATE;   // 配网期间不外借无线电
+    if (s_hold_req) return ESP_ERR_INVALID_STATE;        // 在线功能持有连接期间同理
     if (s_suspend_req) return ESP_OK;                    // 已在挂起流程中
     // 任务还没跑到建 s_events(开机头一两秒):稍等它就绪
     for (int i = 0; !s_events && i < 50; i++) vTaskDelay(pdMS_TO_TICKS(100));
@@ -309,6 +341,26 @@ void app_wifi_resume(void)
     s_suspend_req = false;
     if (s_events) xEventGroupSetBits(s_events, EV_RESUME);
     ESP_LOGI(TAG, "Wi-Fi 恢复脉冲");
+}
+
+// ---- 按需联网:语音等在线功能 ----
+
+esp_err_t app_wifi_hold_open(void)
+{
+    if (s_portal_active) return ESP_ERR_INVALID_STATE;   // 配网期间 STA 不可用
+    // 任务还没跑到建 s_events(开机头一两秒):稍等它就绪
+    for (int i = 0; !s_events && i < 50; i++) vTaskDelay(pdMS_TO_TICKS(100));
+    if (!s_events) return ESP_ERR_INVALID_STATE;
+
+    if (s_hold_req) return ESP_OK;                       // 已在保持中
+    s_hold_req = true;
+    xEventGroupSetBits(s_events, EV_HOLD);
+    return ESP_OK;
+}
+
+void app_wifi_hold_close(void)
+{
+    s_hold_req = false;
 }
 
 // ---- 配网模式 API ----
