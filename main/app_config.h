@@ -44,6 +44,7 @@ typedef struct {
     uint8_t volume;               // 0..APP_CFG_VOL_MAX
     uint8_t screen_off_min;       // 0..APP_CFG_OFF_MAX,0 = 常亮
     bool    boot_badge;           // 开机直接进工牌主页,否则进菜单
+    uint8_t hid_arrows;           // 翻页器键位:0 = PgUp/PgDn,1 = 左/右方向键
 } app_config_t;
 
 // ---- 纯逻辑(app_config_model.c) ----

@@ -22,6 +22,7 @@ void app_config_defaults(app_config_t *cfg) {
     cfg->volume = 60;
     cfg->screen_off_min = 5;
     cfg->boot_badge = true;
+    cfg->hid_arrows = 0;          // 演示文稿场景最常见,默认 PgUp/PgDn
 }
 
 // 字符串字段只保证 NUL 结尾;截断产生的残缺 UTF-8 尾字节由显示层容忍(LVGL 跳过非法序列)。
@@ -47,6 +48,7 @@ bool app_config_sanitize(app_config_t *cfg) {
         changed |= terminate(cfg->qr_label[i], sizeof(cfg->qr_label[i]));
     }
     if (cfg->qr_mode > 0x0F) { cfg->qr_mode = 0; changed = true; }
+    if (cfg->hid_arrows > 1) { cfg->hid_arrows = 0; changed = true; }
     if (cfg->layout >= APP_LAYOUT_COUNT) { cfg->layout = APP_LAYOUT_CARD; changed = true; }
     if (cfg->lang > 1) { cfg->lang = 0; changed = true; }
     if (cfg->layout_mask == 0 || cfg->layout_mask > APP_LAYOUT_ALL_MASK) {

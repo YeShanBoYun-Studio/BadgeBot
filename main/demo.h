@@ -44,5 +44,8 @@ void demo_battery_key(bsp_btn_t btn, bsp_btn_ev_t ev);
 void demo_ble_enter(void);     void demo_ble_exit(void);
 void demo_ble_key(bsp_btn_t btn, bsp_btn_ev_t ev);
 
+void demo_hid_enter(void);     void demo_hid_exit(void);
+void demo_hid_key(bsp_btn_t btn, bsp_btn_ev_t ev);
+
 void demo_low_power_enter(void); void demo_low_power_exit(void);
 void demo_low_power_key(bsp_btn_t btn, bsp_btn_ev_t ev);

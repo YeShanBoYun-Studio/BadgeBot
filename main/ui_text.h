@@ -18,6 +18,13 @@ extern "C" {
     X(SLEEP,        "息屏",                  "Sleep") \
     X(VIEW,         "布局",                  "View") \
     X(TOGGLE,       "开关",                  "Toggle") \
+    X(SEND,         "翻页",                  "Turn") \
+    X(KEYMAP,       "键位",                  "Key map") \
+    X(HID_WAIT,     "等待电脑配对…",         "Waiting for pairing…") \
+    X(HID_CONN,     "已连接,配对中…",        "Connected, pairing…") \
+    X(HID_READY,    "已就绪,可翻页",         "Ready - turn away") \
+    X(HID_MAP_PG,   "键位:PgUp / PgDn",     "Keys: PgUp / PgDn") \
+    X(HID_MAP_AR,   "键位:左键 / 右键",     "Keys: Left / Right") \
     X(DONE,         "完成",                  "Done") \
     X(ROW_BL,       "亮度",                  "Brightness") \
     X(ROW_VOL,      "音量",                  "Volume") \

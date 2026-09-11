@@ -14,6 +14,7 @@
 #include "app_config.h"
 #include "app_store.h"
 #include "app_wifi.h"
+#include "app_blehid.h"
 #include "demo.h"
 #include "ui_pixel.h"
 #include "ui_text.h"
@@ -33,6 +34,7 @@ enum {
     DEMO_BUTTON,
     DEMO_AUDIO,
     DEMO_BATTERY,
+    DEMO_HID,
     DEMO_BLE,
     DEMO_LOW_POWER,
     DEMO_COUNT,
@@ -46,6 +48,7 @@ static const demo_entry_t DEMOS[DEMO_COUNT] = {
     [DEMO_BUTTON]    = { "Button",    "按键",   demo_button_enter,    demo_button_exit,    demo_button_key    },
     [DEMO_AUDIO]     = { "Audio",     "音频",   demo_audio_enter,     demo_audio_exit,     demo_audio_key     },
     [DEMO_BATTERY]   = { "Battery",   "电池",   demo_battery_enter,   demo_battery_exit,   demo_battery_key   },
+    [DEMO_HID]       = { "Turner",    "翻页器", demo_hid_enter,       demo_hid_exit,       demo_hid_key       },
     [DEMO_BLE]       = { "BLE",       "蓝牙",   demo_ble_enter,       demo_ble_exit,       demo_ble_key       },
     [DEMO_LOW_POWER] = { "Low Power", "低功耗", demo_low_power_enter, demo_low_power_exit, demo_low_power_key },
 };
@@ -193,8 +196,10 @@ void demo_request_screen_off(void) {
 }
 
 static void status_refresh(void) {
+    bool ble_on = app_blehid_state() == BLEHID_CONNECTED ||
+                  app_blehid_state() == BLEHID_READY;
     ui_pixel_status_update(bsp_battery_soc(), app_config_get()->volume,
-                           app_wifi_connected(), false);
+                           app_wifi_connected(), ble_on);
 }
 
 static void sys_tick(lv_timer_t *t) {

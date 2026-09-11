@@ -75,6 +75,7 @@ static esp_err_t load(void) {
     get_u8  (h, "vol",   &s_cfg.volume);
     get_u8  (h, "offmin",&s_cfg.screen_off_min);
     get_bool(h, "boot",  &s_cfg.boot_badge);
+    get_u8  (h, "hidmap",&s_cfg.hid_arrows);
     nvs_close(h);
 
     if (app_config_sanitize(&s_cfg)) {
@@ -111,7 +112,8 @@ static esp_err_t save(const app_config_t *cfg) {
         (e = nvs_set_u8 (h, "bl",    cfg->brightness)) == ESP_OK &&
         (e = nvs_set_u8 (h, "vol",   cfg->volume)) == ESP_OK &&
         (e = nvs_set_u8 (h, "offmin",cfg->screen_off_min)) == ESP_OK &&
-        (e = nvs_set_u8 (h, "boot",  cfg->boot_badge)) == ESP_OK) {
+        (e = nvs_set_u8 (h, "boot",  cfg->boot_badge)) == ESP_OK &&
+        (e = nvs_set_u8 (h, "hidmap",cfg->hid_arrows)) == ESP_OK) {
         e = nvs_commit(h);
     }
     nvs_close(h);
