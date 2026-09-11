@@ -2,11 +2,11 @@
 //
 // 页面是手机浏览器打开的 http://192.168.4.1;接口:
 //   GET  /api/config  当前配置(不含 Wi-Fi 密码;附带热点剩余毫秒数,页面心跳用)
-//   POST /api/config  保存名片资料(name/org/title/hide/qr_a/gh/lang)
+//   POST /api/config  保存名片资料(name/org/title/hide/qr_a/lang)
 //   POST /api/wifi    保存 STA 凭据(写入 NVS 并延长热点窗口,让用户继续上传)
 //   POST /api/avatar  头像(96x96 RGB565 原始字节,body 为 0 清除)
 //   POST /api/qrimg   二维码图(128x128 1bpp,body 为 0 清除)
-//   POST /api/done    用户点"完成并联网":数秒后关热点并立即联网校时/拉热力图
+//   POST /api/done    用户点"完成并联网":数秒后关热点并立即联网校时
 // 图片由页面 JS 裁剪:默认居中正方形选区,可拖动/缩放;固件不做图片解码。
 // 注意:store 分区曾因 FATFS 长文件名未启用(CONFIG_FATFS_LFN_NONE)导致
 // fopen("avatar.rgb565") 失败(8.3 短名放不下 6 字符扩展名),页面表现为
@@ -83,12 +83,8 @@ static const char PORTAL_HTML[] =
 "<button id='b_cancel' class='minor' onclick='cancelCrop()'>取消</button>"
 "</div>"
 "</fieldset>"
-"<fieldset><legend id='l_gh'>GitHub 热力图</legend>"
-"<label id='l_user'>用户名</label><input id='bgh'>"
-"<button id='b_savegh' onclick='saveGh()'>保存</button><span id='gm'></span>"
-"</fieldset>"
 "<button id='b_done' class='done' onclick='finish()'>完成并联网</button><span id='dm'></span>"
-"<p id='hint' class='hint'>保存 Wi-Fi 后热点保持开启;完成所有修改后点「完成并联网」,工牌会关闭热点并立即联网校时、拉取热力图。</p>"
+"<p id='hint' class='hint'>保存 Wi-Fi 后热点保持开启;完成所有修改后点「完成并联网」,工牌会关闭热点并立即联网校时。</p>"
 "<script>"
 "var LANG=0;"
 "var D={"
@@ -98,18 +94,16 @@ static const char PORTAL_HTML[] =
 "img:'图片(手动裁剪为正方形)',avatar:'头像(输出 96x96)',upav:'裁剪并上传头像',clr:'清除',"
 "qrimg:'二维码图(微信等,输出 128x128 黑白)',upqr:'裁剪并上传二维码图',"
 "crop:'拖动虚线框选裁剪区;右下角手柄缩放(默认居中)',ok:'确认上传',cancel:'取消',"
-"gh:'GitHub 热力图',user:'用户名',savegh:'保存',"
 "done:'完成并联网',pick:'请先选择图片',dec:'图片解码失败,请换 JPG/PNG 试',"
 "proc:'处理中…',uping:'上传中…',net:'网络错误(热点可能已关闭)',"
 "alive:'热点在线 · 剩余约 ',unit:' 秒',dead:'设备不可达:热点可能已关闭,请在工牌重新进入配网后刷新本页',"
-"hint:'保存 Wi-Fi 后热点保持开启;完成所有修改后点「完成并联网」,工牌会关闭热点并立即联网校时、拉取热力图。'},"
+"hint:'保存 Wi-Fi 后热点保持开启;完成所有修改后点「完成并联网」,工牌会关闭热点并立即联网校时。'},"
 "en:{wifi:'Wi-Fi (2.4GHz only)',ssid:'SSID',pass:'Password',savewifi:'Save Wi-Fi',"
 "card:'Card',name:'Name',org:'Company',title:'Title',hide:'Hide company/title',"
 "qra:'QR content (link or text)',savecard:'Save card',"
 "img:'Images (manual square crop)',avatar:'Avatar (96x96 out)',upav:'Crop && upload avatar',clr:'Clear',"
 "qrimg:'QR image (WeChat etc., 128x128 B/W)',upqr:'Crop && upload QR image',"
 "crop:'Drag the dashed box to crop; corner handle resizes (centered by default)',ok:'Upload',cancel:'Cancel',"
-"gh:'GitHub heatmap',user:'Username',savegh:'Save',"
 "done:'Finish && connect',pick:'Pick an image first',dec:'Decode failed, try JPG/PNG',"
 "proc:'Working…',uping:'Uploading…',net:'Network error (hotspot may be closed)',"
 "alive:'Hotspot online · about ',unit:'s left',dead:'Device unreachable - hotspot may be closed; reopen provisioning on the badge and refresh',"
@@ -132,8 +126,7 @@ static const char PORTAL_HTML[] =
 "fid('b_clr2').textContent=T('clr');"
 "fid('l_crop').textContent=T('crop');fid('b_cropok').textContent=T('ok');"
 "fid('b_cancel').textContent=T('cancel');"
-"fid('l_gh').textContent=T('gh');fid('l_user').textContent=T('user');"
-"fid('b_savegh').textContent=T('savegh');fid('b_done').textContent=T('done');"
+"fid('b_done').textContent=T('done');"
 "fid('hint').textContent=T('hint')}"
 "function toggleLang(){LANG=1-LANG;applyLang()}"
 "function sv(u,b,m){msg(m,T('proc'),true);"
@@ -143,7 +136,6 @@ static const char PORTAL_HTML[] =
 "function saveWifi(){sv('/api/wifi',{ssid:fid('ssid').value,pass:fid('pass').value},fid('wm'))}"
 "function saveCfg(){sv('/api/config',{name:fid('bname').value,org:fid('borg').value,"
 "title:fid('btitle').value,hide:fid('bhide').checked,qr_a:fid('bqr').value},fid('cm'))}"
-"function saveGh(){sv('/api/config',{gh:fid('bgh').value},fid('gm'))}"
 "function finish(){sv('/api/done',{},fid('dm'))}"
 "function clr(u,m){msg(m,T('proc'),true);"
 "fetch(u,{method:'POST'}).then(function(r){return r.text()})"
@@ -205,7 +197,7 @@ static const char PORTAL_HTML[] =
 "fetch('/api/config').then(function(r){return r.json()}).then(function(c){"
 "fid('ssid').value=c.sta_ssid||'';fid('bname').value=c.name||'';"
 "fid('borg').value=c.org||'';fid('btitle').value=c.title||'';"
-"fid('bhide').checked=!!c.hide;fid('bqr').value=c.qr_a||'';fid('bgh').value=c.gh||'';"
+"fid('bhide').checked=!!c.hide;fid('bqr').value=c.qr_a||'';"
 "LANG=c.lang?1:0;applyLang()}).then(beat).catch(function(){applyLang();beat()});"
 "</script></body></html>";
 
@@ -234,7 +226,6 @@ static esp_err_t get_config(httpd_req_t *req)
     cJSON_AddStringToObject(j, "org", c->org);
     cJSON_AddStringToObject(j, "title", c->title);
     cJSON_AddStringToObject(j, "qr_a", c->qr_a);
-    cJSON_AddStringToObject(j, "gh", c->gh_user);
     cJSON_AddBoolToObject(j, "hide", c->hide_org_title);
     cJSON_AddNumberToObject(j, "layout", c->layout);
     cJSON_AddNumberToObject(j, "theme", c->theme);
@@ -282,8 +273,6 @@ static esp_err_t post_config(httpd_req_t *req)
         strlcpy(c.title, item->valuestring, sizeof(c.title));
     if ((item = cJSON_GetObjectItem(j, "qr_a"))  && cJSON_IsString(item))
         strlcpy(c.qr_a, item->valuestring, sizeof(c.qr_a));
-    if ((item = cJSON_GetObjectItem(j, "gh"))    && cJSON_IsString(item))
-        strlcpy(c.gh_user, item->valuestring, sizeof(c.gh_user));
     if ((item = cJSON_GetObjectItem(j, "hide"))  && cJSON_IsBool(item))
         c.hide_org_title = cJSON_IsTrue(item);
     if ((item = cJSON_GetObjectItem(j, "lang"))  && cJSON_IsNumber(item))

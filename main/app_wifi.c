@@ -1,7 +1,7 @@
 // main/app_wifi.c —— Wi-Fi 管理:省电脉冲 STA + 配网 SoftAP,单一属主任务。
 //
 // 为什么是脉冲:电池只有 520mAh,STA 常连平均 ~100mA 只能撑几小时。
-// 每小时连一次、保持一分钟,足够 SNTP 校时和以后 GitHub 数据的定期拉取。
+// 每小时连一次、保持一分钟,足够 SNTP 校时。
 //
 // 配网模式:收到 portal 请求后,任务在安全点断开 STA、切到 AP(BadgeBot-XXXX,
 // 随机 8 位密码),拉起 HTTP 门户(app_portal),超时/保存/手动关闭后切回 STA。
@@ -11,7 +11,6 @@
 // 之后每次脉冲零配置自动连接。
 #include "app_wifi.h"
 #include "app_clock.h"
-#include "app_github.h"
 #include "app_portal.h"
 #include "demo_radio.h"
 #include "esp_event.h"
@@ -19,8 +18,6 @@
 #include "esp_mac.h"
 #include "esp_netif.h"
 #include "esp_random.h"
-#include "esp_heap_caps.h"
-#include "esp_system.h"
 #include "esp_wifi.h"
 #include "dns_server.h"
 #include "freertos/FreeRTOS.h"
@@ -74,20 +71,7 @@ static void pulse_connect_cycle(void)
         waited += 100;
     }
     if (s_connected) {
-        ESP_LOGI(TAG, "已连接,保持 %d 秒(校时/拉取窗口)", CONNECT_HOLD_MS / 1000);
-        // 证书验证依赖正确时钟:先等 SNTP 校时(最多 15 秒),否则 1970 年的时钟
-        // 会让所有证书"尚未生效",TLS 握手必失败
-        for (int i = 0; i < 150 && !app_clock_synced(); i++) {
-            vTaskDelay(pdMS_TO_TICKS(100));
-        }
-        // 联网窗口前的内存快照(追查 TLS 验签问题时用)
-        ESP_LOGI("diag", "heap free=%u largest=%u minfree=%u stack_hwm=%u integ=%d",
-                 (unsigned)esp_get_free_heap_size(),
-                 (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_8BIT),
-                 (unsigned)esp_get_minimum_free_heap_size(),
-                 (unsigned)uxTaskGetStackHighWaterMark(NULL),
-                 (int)heap_caps_check_integrity_all(true));
-        app_github_fetch();   // 联网窗口内刷新热力图缓存(阻塞数秒,窗口足够)
+        ESP_LOGI(TAG, "已连接,保持 %d 秒(校时窗口)", CONNECT_HOLD_MS / 1000);
         vTaskDelay(pdMS_TO_TICKS(CONNECT_HOLD_MS));
     } else {
         ESP_LOGW(TAG, "连接失败(没有已存凭据或信号不佳),%d 分钟后重试",
@@ -230,7 +214,7 @@ static void wifi_task(void *arg)
 
     s_events = xEventGroupCreate();
 
-    pulse_connect_cycle();   // 开机先脉冲一次,尽快校时/拉热力图,不让用户等满一小时
+    pulse_connect_cycle();   // 开机先脉冲一次,尽快校时,不让用户等满一小时
     for (;;) {
         // 等待下一次脉冲(期间收到配网请求则立即切换)
         EventBits_t bits = xEventGroupWaitBits(s_events, EV_PORTAL | EV_EXIT, pdTRUE, pdFALSE,

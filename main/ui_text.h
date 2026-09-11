@@ -29,7 +29,6 @@ extern "C" {
     X(ROW_ABOUT,    "固件版本",              "Firmware") \
     X(LAY_CARD,     "名片",                  "Card") \
     X(LAY_QR,       "二维码",                "QR codes") \
-    X(LAY_GH,       "GitHub",                "GitHub") \
     X(LAY_PET,      "宠物",                  "Pet") \
     X(ON,           "开",                    "On") \
     X(OFF,          "关",                    "Off") \
@@ -45,16 +44,30 @@ extern "C" {
     X(QR_LINK,      "链接",                  "Link") \
     X(QR_IMG,       "图片",                  "Photo") \
     X(QR_NONE,      "未上传\n二维码图",      "No QR\nimage") \
-    X(GH_TITLE,     "GitHub 热力图",         "Contributions") \
-    X(GH_WAIT,      "等待网络连接…",         "Waiting for Wi-Fi…") \
-    X(GH_WAIT_SUB,  "联网后自动拉取提交记录", "Fetches once online") \
-    X(GH_NOUSER,    "未配置用户名",          "No username set") \
-    X(GH_NOUSER_SUB, "请在门户“GitHub 热力图”中填写", "Set it in the portal") \
-    X(GH_TOTAL,     "近一年 %d 次提交",      "%d commits this year") \
-    X(LOWMEM,       "内存不足",              "Low memory") \
-    X(PET_ENERGY,   "活力 %d%%",             "Energy %d%%") \
-    X(PET_MOOD,     "心情:开心",             "Mood: happy") \
-    X(PET_SOON,     "养成系统制作中…",       "Raising system coming soon…") \
+    X(ST_HUNGER,    "饱食",                  "Food") \
+    X(ST_FUN,       "心情",                  "Fun") \
+    X(ST_CLEAN,     "清洁",                  "Clean") \
+    X(ST_ENERGY,    "精力",                  "Energy") \
+    X(PET_STAGE_EGG,  "蛋",                  "Egg") \
+    X(PET_STAGE_BABY, "幼年",                "Baby") \
+    X(PET_STAGE_CHILD, "少年",               "Child") \
+    X(PET_STAGE_ADULT, "成年",               "Adult") \
+    X(PET_MOOD_HAPPY,  "开心",               "Happy") \
+    X(PET_MOOD_FINE,   "还不错",             "Okay") \
+    X(PET_MOOD_SAD,    "难过",               "Sad") \
+    X(PET_MOOD_HUNGRY, "饿了",               "Hungry") \
+    X(PET_MOOD_SLEEPY, "困了",               "Sleepy") \
+    X(PET_MOOD_ASLEEP, "睡着了",             "Asleep") \
+    X(PET_MOOD_NA,     "…",                  "…") \
+    X(PET_HATCH,     "孵化中…",              "Hatching…") \
+    X(PET_AGE_FMT,   "%d天%d时",             "%dd %dh") \
+    X(PET_WT_FMT,    "体重 %dg",             "Weight %dg") \
+    X(ACT_FMT,       "动作:%s",              "Action: %s") \
+    X(ACT_FEED,      "喂食",                 "Feed") \
+    X(ACT_PLAY,      "玩耍",                 "Play") \
+    X(ACT_CLEAN,     "清洁",                 "Clean") \
+    X(ACT_SLEEP,     "睡觉",                 "Sleep") \
+    X(ACT_WAKE,      "叫醒",                 "Wake") \
     X(PORTAL_STARTING, "正在启动热点…",      "Starting hotspot…") \
     X(PORTAL_DONE,  "配网已结束,按 OK 返回", "Portal closed - press OK") \
     X(PORTAL_URL,   "手机浏览器打开 %s",     "Open %s in a browser")

@@ -12,7 +12,6 @@
 #include "bsp_battery.h"
 #include "bsp_pins.h"      // 错误日志里要打印 BSP_LCD_* 引脚号
 #include "app_config.h"
-#include "app_github.h"
 #include "app_store.h"
 #include "app_wifi.h"
 #include "demo.h"
@@ -245,7 +244,6 @@ void app_main(void) {
     // 配置先于显示:背光初值、主题与开机页都取自 NVS。
     app_config_init();
     app_store_init();          // 上传资产(头像/二维码图)的 FATFS,失败仅降级相关功能
-    app_github_load();         // 热力图缓存(有则主页布局 C 立即可画)
     ui_pixel_set_theme(app_config_get()->theme);
 
     bsp_i2c_init();

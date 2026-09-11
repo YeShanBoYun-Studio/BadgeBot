@@ -72,7 +72,6 @@ static void test_steps(void)
 
     assert(strcmp(app_config_layout_name(APP_LAYOUT_CARD), "CARD") == 0);
     assert(strcmp(app_config_layout_name(APP_LAYOUT_QR), "QR") == 0);
-    assert(strcmp(app_config_layout_name(APP_LAYOUT_GITHUB), "GITHUB") == 0);
     assert(strcmp(app_config_layout_name(APP_LAYOUT_PET), "PET") == 0);
     assert(strcmp(app_config_layout_name(APP_LAYOUT_COUNT), "?") == 0);
 }
@@ -106,10 +105,10 @@ static void test_layout_mask(void)
     assert(c.lang == 0);
 
     // next_layout:只在掩码允许的布局间循环
-    uint8_t m = (uint8_t)((1 << APP_LAYOUT_CARD) | (1 << APP_LAYOUT_GITHUB));
-    assert(app_config_next_layout(APP_LAYOUT_CARD, m, +1) == APP_LAYOUT_GITHUB);
-    assert(app_config_next_layout(APP_LAYOUT_GITHUB, m, +1) == APP_LAYOUT_CARD);
-    assert(app_config_next_layout(APP_LAYOUT_CARD, m, -1) == APP_LAYOUT_GITHUB);
+    uint8_t m = (uint8_t)((1 << APP_LAYOUT_CARD) | (1 << APP_LAYOUT_PET));
+    assert(app_config_next_layout(APP_LAYOUT_CARD, m, +1) == APP_LAYOUT_PET);
+    assert(app_config_next_layout(APP_LAYOUT_PET, m, +1) == APP_LAYOUT_CARD);
+    assert(app_config_next_layout(APP_LAYOUT_CARD, m, -1) == APP_LAYOUT_PET);
     // 当前布局不在掩码内时从头找第一个可用项
     assert(app_config_next_layout(APP_LAYOUT_PET, m, +1) == APP_LAYOUT_CARD);
     // 只有自身可用时保持不动

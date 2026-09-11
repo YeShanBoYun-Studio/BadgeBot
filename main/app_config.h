@@ -10,7 +10,6 @@
 
 #define APP_CFG_STR_LEN     48    // UTF-8 字节上限(含 NUL),约 15 个汉字,够放姓名/公司/岗位
 #define APP_CFG_QR_LEN      128   // 二维码槽 A 的文本上限(URL/任意文本)
-#define APP_CFG_GH_LEN      40    // GitHub 用户名上限
 #define APP_CFG_BL_MIN      10    // 背光下限(%),0 会让屏幕全黑、无法操作
 #define APP_CFG_BL_MAX      100
 #define APP_CFG_BL_STEP     10
@@ -21,8 +20,7 @@
 typedef enum {
     APP_LAYOUT_CARD = 0,          // A:名片(时间/头像/姓名/岗位/电量)
     APP_LAYOUT_QR,                // B:双二维码
-    APP_LAYOUT_GITHUB,            // C:GitHub 热力图
-    APP_LAYOUT_PET,               // D:宠物卡片(养成系统 M7 逐步丰富)
+    APP_LAYOUT_PET,               // C:像素宠物(拓麻歌子式养成)
     APP_LAYOUT_COUNT,
 } app_layout_t;
 
@@ -33,7 +31,6 @@ typedef struct {
     char    org[APP_CFG_STR_LEN];
     char    title[APP_CFG_STR_LEN];
     char    qr_a[APP_CFG_QR_LEN]; // 二维码槽 A:链接或文本,设备端生成二维码
-    char    gh_user[APP_CFG_GH_LEN]; // GitHub 用户名(热力图数据源)
     bool    hide_org_title;       // 主页不显示公司/岗位(默认隐藏)
     uint8_t layout;               // app_layout_t,开机默认布局
     uint8_t layout_mask;          // 布局开关位掩码,bit n = APP_LAYOUT_n;主页 ▲/▼ 只在开启的布局间切换

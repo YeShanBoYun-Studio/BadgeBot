@@ -43,13 +43,6 @@ bool app_config_sanitize(app_config_t *cfg) {
     changed |= terminate(cfg->org);
     changed |= terminate(cfg->title);
     changed |= terminate(cfg->qr_a);
-    // GitHub 用户名只允许仓库页 URL 路径的安全字符,防注入
-    for (char *p = cfg->gh_user; *p; p++) {
-        char ch = *p;
-        bool ok = (ch >= 'A' && ch <= 'Z') || (ch >= 'a' && ch <= 'z') ||
-                  (ch >= '0' && ch <= '9') || ch == '-' || ch == '_';
-        if (!ok) { *p = '\0'; changed = true; break; }
-    }
     if (cfg->layout >= APP_LAYOUT_COUNT) { cfg->layout = APP_LAYOUT_CARD; changed = true; }
     if (cfg->lang > 1) { cfg->lang = 0; changed = true; }
     if (cfg->layout_mask == 0 || cfg->layout_mask > APP_LAYOUT_ALL_MASK) {
@@ -119,7 +112,6 @@ const char *app_config_layout_name(uint8_t layout) {
     switch (layout) {
     case APP_LAYOUT_CARD:   return "CARD";
     case APP_LAYOUT_QR:     return "QR";
-    case APP_LAYOUT_GITHUB: return "GITHUB";
     case APP_LAYOUT_PET:    return "PET";
     default:                return "?";
     }

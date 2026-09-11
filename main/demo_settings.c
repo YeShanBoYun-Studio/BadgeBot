@@ -38,7 +38,6 @@ static const char *layout_label(uint8_t layout) {
     switch (layout) {
     case APP_LAYOUT_CARD:   return lang_text(UI_T_LAY_CARD);
     case APP_LAYOUT_QR:     return lang_text(UI_T_LAY_QR);
-    case APP_LAYOUT_GITHUB: return lang_text(UI_T_LAY_GH);
     case APP_LAYOUT_PET:    return lang_text(UI_T_LAY_PET);
     default:                return "?";
     }
