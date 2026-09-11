@@ -15,6 +15,7 @@
 #include "app_blehid.h"
 #include "app_blehid_keys.h"
 #include "app_config.h"
+#include "app_wifi.h"
 #include "demo_radio.h"
 
 #include "esp_log.h"
@@ -288,12 +289,21 @@ esp_err_t app_blehid_start(void)
 {
     if (s_initialized) return ESP_OK;
 
-    esp_err_t err = demo_radio_nvs_prepare();
+    // 蓝牙主机约需 40KB 堆:Wi-Fi 驱动在就不够(实测剩 38KB 时 hci 初始化失败),
+    // 按原设计"无线栈互斥"——翻页器期间挂起 Wi-Fi 脉冲,退出时恢复。
+    esp_err_t err = app_wifi_suspend();
     if (err != ESP_OK) return err;
+
+    err = demo_radio_nvs_prepare();
+    if (err != ESP_OK) {
+        app_wifi_resume();
+        return err;
+    }
 
     err = nimble_port_init();
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "nimble_port_init 失败 %s", esp_err_to_name(err));
+        app_wifi_resume();
         return err;
     }
     s_initialized = true;
@@ -345,6 +355,7 @@ void app_blehid_shutdown(void)
     s_initialized = false;
     s_encrypted = false;
     s_state = BLEHID_IDLE;
+    app_wifi_resume();       // 蓝牙已释放,无线电还给 Wi-Fi 脉冲
 }
 
 blehid_state_t app_blehid_state(void)

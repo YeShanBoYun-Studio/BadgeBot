@@ -1,6 +1,7 @@
 // main/app_wifi.h —— 工牌的 Wi-Fi 管理:省电脉冲 STA + 配网 SoftAP。
 #pragma once
 
+#include "esp_err.h"
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -11,6 +12,13 @@ void app_wifi_start(void);
 
 // 当前 STA 是否处于已连接状态(顶部状态栏用)。
 bool app_wifi_connected(void);
+
+// ---- 翻页器互斥 ----
+// 挂起 Wi-Fi:脉冲循环提前打断,驱动 stop + deinit,把堆内存让给蓝牙主机。
+// 阻塞至任务完成释放(通常 ~1 秒);配网进行中返回 ESP_ERR_INVALID_STATE。
+// 需与 app_wifi_resume() 配对;挂起期间 app_wifi_connected() 为 false。
+esp_err_t app_wifi_suspend(void);
+void app_wifi_resume(void);
 
 // ---- 配网模式(SoftAP + HTTP 门户) ----
 // 请求进入配网模式:脉冲任务会在安全点把 Wi-Fi 切到 AP(BadgeBot-XXXX,随机密码),

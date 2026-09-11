@@ -38,8 +38,14 @@ static const char *TAG = "app_wifi";
 static volatile bool s_connected;
 static TaskHandle_t s_task;
 static EventGroupHandle_t s_events;
-#define EV_PORTAL BIT0
-#define EV_EXIT   BIT1
+#define EV_PORTAL  BIT0
+#define EV_EXIT    BIT1
+#define EV_SUSPEND BIT2   // BLE 翻页器要独占无线电:脉冲任务停驱动并释放内存
+#define EV_RESUME  BIT3   // 翻页器退出:脉冲任务重新初始化驱动
+
+// 翻页器挂起:请求置位给 pulse 循环提前打断;suspend_sem 用于等任务完成 deinit
+static volatile bool s_suspend_req;
+static SemaphoreHandle_t s_suspend_sem;
 
 // 配网模式状态(任务写,页面/HTTP 读;读取处不要求强一致)
 static volatile bool s_portal_active;
@@ -66,13 +72,17 @@ static void pulse_connect_cycle(void)
     ESP_LOGI(TAG, "尝试连接 Wi-Fi(使用设备已存凭据)");
     esp_wifi_connect();
     int waited = 0;
-    while (!s_connected && waited < CONNECT_TIMEOUT_MS) {
+    while (!s_connected && waited < CONNECT_TIMEOUT_MS && !s_suspend_req) {
         vTaskDelay(pdMS_TO_TICKS(100));
         waited += 100;
     }
     if (s_connected) {
         ESP_LOGI(TAG, "已连接,保持 %d 秒(校时窗口)", CONNECT_HOLD_MS / 1000);
-        vTaskDelay(pdMS_TO_TICKS(CONNECT_HOLD_MS));
+        int held = 0;
+        while (held < CONNECT_HOLD_MS && !s_suspend_req) {
+            vTaskDelay(pdMS_TO_TICKS(1000));
+            held += 1000;
+        }
     } else {
         ESP_LOGW(TAG, "连接失败(没有已存凭据或信号不佳),%d 分钟后重试",
                  RETRY_INTERVAL_MS / 60000);
@@ -216,8 +226,9 @@ static void wifi_task(void *arg)
 
     pulse_connect_cycle();   // 开机先脉冲一次,尽快校时,不让用户等满一小时
     for (;;) {
-        // 等待下一次脉冲(期间收到配网请求则立即切换)
-        EventBits_t bits = xEventGroupWaitBits(s_events, EV_PORTAL | EV_EXIT, pdTRUE, pdFALSE,
+        // 等待下一次脉冲(期间收到配网/挂起请求则立即切换)
+        EventBits_t bits = xEventGroupWaitBits(s_events, EV_PORTAL | EV_EXIT | EV_SUSPEND,
+                                               pdTRUE, pdFALSE,
                                                pdMS_TO_TICKS(RESYNC_INTERVAL_MS));
         if (bits & EV_PORTAL) {
             run_portal(PORTAL_TIMEOUT_MS);
@@ -225,6 +236,26 @@ static void wifi_task(void *arg)
             continue;
         }
         if (bits & EV_EXIT) break;
+        if (bits & EV_SUSPEND) {
+            // BLE 翻页器独占无线电:彻底释放驱动内存(蓝牙主机约需 40KB 堆),
+            // 等翻页器退出后原地重新初始化,继续原有脉冲节奏。
+            esp_wifi_disconnect();
+            esp_wifi_stop();
+            esp_wifi_deinit();
+            xSemaphoreGive(s_suspend_sem);
+            xEventGroupWaitBits(s_events, EV_RESUME, pdTRUE, pdFALSE, portMAX_DELAY);
+            for (int attempt = 1;; attempt++) {
+                e = esp_wifi_init(&cfg);
+                if (e == ESP_OK) break;
+                ESP_LOGE(TAG, "esp_wifi_init 失败(%s),第 %d 次重试等 10s",
+                         esp_err_to_name(e), attempt);
+                vTaskDelay(pdMS_TO_TICKS(10000));
+            }
+            esp_wifi_set_storage(WIFI_STORAGE_FLASH);
+            esp_wifi_set_mode(WIFI_MODE_STA);
+            esp_wifi_start();
+            continue;
+        }
 
         pulse_connect_cycle();
     }
@@ -243,6 +274,41 @@ void app_wifi_start(void)
 bool app_wifi_connected(void)
 {
     return s_connected;
+}
+
+// ---- 翻页器互斥:挂起/恢复 ----
+
+esp_err_t app_wifi_suspend(void)
+{
+    if (s_portal_active) return ESP_ERR_INVALID_STATE;   // 配网期间不外借无线电
+    if (s_suspend_req) return ESP_OK;                    // 已在挂起流程中
+    // 任务还没跑到建 s_events(开机头一两秒):稍等它就绪
+    for (int i = 0; !s_events && i < 50; i++) vTaskDelay(pdMS_TO_TICKS(100));
+    if (!s_events) return ESP_ERR_INVALID_STATE;
+
+    s_suspend_req = true;
+    s_suspend_sem = xSemaphoreCreateBinary();
+    if (!s_suspend_sem) return ESP_ERR_NO_MEM;
+    xEventGroupSetBits(s_events, EV_SUSPEND);
+    // 正常在 1 秒内完成(pulse 循环会因 s_suspend_req 提前退出);超时兜底返回
+    if (xSemaphoreTake(s_suspend_sem, pdMS_TO_TICKS(12000)) != pdTRUE) {
+        s_suspend_req = false;
+        vSemaphoreDelete(s_suspend_sem);
+        s_suspend_sem = NULL;
+        return ESP_ERR_TIMEOUT;
+    }
+    vSemaphoreDelete(s_suspend_sem);
+    s_suspend_sem = NULL;
+    ESP_LOGI(TAG, "Wi-Fi 已挂起,无线电让给蓝牙");
+    return ESP_OK;
+}
+
+void app_wifi_resume(void)
+{
+    if (!s_suspend_req) return;
+    s_suspend_req = false;
+    if (s_events) xEventGroupSetBits(s_events, EV_RESUME);
+    ESP_LOGI(TAG, "Wi-Fi 恢复脉冲");
 }
 
 // ---- 配网模式 API ----
