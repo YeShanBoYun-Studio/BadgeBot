@@ -14,6 +14,7 @@
 #include "app_config.h"
 #include "app_store.h"
 #include "app_wifi.h"
+#include "app_clock.h"
 #include "app_blehid.h"
 #include "demo.h"
 #include "ui_pixel.h"
@@ -253,6 +254,7 @@ void app_main(void) {
 
     // 配置先于显示:背光初值、主题与开机页都取自 NVS。
     app_config_init();
+    app_clock_init();          // 设 SNTP 时区(TZ),漏掉这步 localtime 会回落到 UTC
     app_store_init();          // 上传资产(头像/二维码图)的 FATFS,失败仅降级相关功能
     ui_pixel_set_theme(app_config_get()->theme);
 
@@ -276,6 +278,7 @@ void app_main(void) {
     s_ok[DEMO_BUTTON]    = (bsp_button_init(on_key, NULL) == ESP_OK);
     s_ok[DEMO_AUDIO]     = (bsp_audio_init() == ESP_OK);
     s_ok[DEMO_BATTERY]   = (bsp_battery_init() == ESP_OK);
+    s_ok[DEMO_HID]       = true;
     s_ok[DEMO_BLE]       = true;
     s_ok[DEMO_LOW_POWER] = true;
     app_config_apply();                                       // 音量要等 audio 初始化后再设

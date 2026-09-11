@@ -6,6 +6,8 @@
 
 ## Unreleased
 
+- Fixed the clock showing UTC instead of local time (e.g. 05:15 when it was 13:15 in Beijing; the date stayed right because both fell on the same day): the code set the China Standard Time zone (`TZ=CST-8`) in `app_clock_init()`, but that function was never called. It now runs during boot, and the sync log line prints the resulting local time and zone for easy verification. Also fixed the Turner menu entry showing as `[FAIL]` and being unenterable — its readiness flag was never set.
+
 - Added the BLE page-turner (M3): the badge now advertises as a Bluetooth keyboard named "BadgeBot" (HID-over-GATT service implemented on NimBLE — IDF 5.5 ships no HID-device example). After pairing from the computer's Bluetooth settings, the arrow keys send Page Up/Page Down so slides, PDFs, and readers can be driven with no host-side software; the status-bar Bluetooth icon lights up when a host is connected. OK on the Turner page switches the key mapping between PgUp/PgDn (presentations) and Left/Right arrows (image viewers, manga), persisted in NVS (`hidmap` config key). Pairing is Just Works with LE Secure Connections and bonding persisted in NVS, so hosts re-connect automatically after a badge reboot; stale keys from a wiped device are handled by deleting the old bond on repeat pairing.
 
 - Reworked the pet layout keys so actions are reachable: on the pet page, OK long-press now toggles an action mode (highlighted, with an "action:" line showing the selection) instead of opening the menu, which previously swallowed every key press and could leave the page only through the menu. In normal mode the arrows switch layouts and OK short-press opens the menu as on other pages; in action mode the arrows pick feed/play/clean/sleep-wake and OK performs it.

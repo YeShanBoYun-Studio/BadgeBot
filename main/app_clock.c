@@ -12,7 +12,12 @@ static void on_sync(struct timeval *tv)
 {
     (void)tv;
     s_synced = true;
-    ESP_LOGI(TAG, "SNTP 校时完成");
+    time_t now = time(NULL);
+    struct tm lt;
+    localtime_r(&now, &lt);
+    ESP_LOGI(TAG, "SNTP 校时完成,本地时间 %04d-%02d-%02d %02d:%02d:%02d (TZ=%s)",
+             lt.tm_year + 1900, lt.tm_mon + 1, lt.tm_mday,
+             lt.tm_hour, lt.tm_min, lt.tm_sec, getenv("TZ") ? getenv("TZ") : "(unset)");
 }
 
 void app_clock_init(void)
