@@ -7,8 +7,9 @@
 //           离线时长也会结算(NVS);动作模式「玩耍」进入小游戏:
 //           猜方向(拓麻歌子传统)/快反应,赢局奖心情体重,开局耗精力
 // 电量/音量/Wi-Fi 在每屏共用的顶部状态栏;自动息屏由 main.c 统一处理。
-// 按键:▼ 长按 = 立即息屏;宠物页 OK 长按 = 进/出动作模式,动作模式下 ▲/▼ 选动作、
-//       OK 短按执行;普通模式 ▲/▼ 切布局、OK 短按开菜单。
+// 按键:▼ 长按 = 立即息屏。名片/二维码页:OK 短按 = 菜单。宠物页与其他页统一:
+//       OK 短按 = 进动作模式(动作模式下执行选中动作,OK 长按逐级退回),
+//       普通模式 OK 长按 = 菜单;动作模式里短按 OK 永远不会误触菜单。
 // 上传图片统一由门户 JS 居中裁成正方形:头像 96x96,二维码图 128x128 黑白(四槽)。
 #include "demo.h"
 #include "app_clock.h"
@@ -916,9 +917,9 @@ void demo_badge_enter(void) {
 
     if (cfg->layout == APP_LAYOUT_PET) {
         const ui_hint_t PET_HINTS[] = {
-            { LV_SYMBOL_UP LV_SYMBOL_DOWN, ui_text(UI_T_VIEW), false },  // 布局/选动作
-            { "OK",                        ui_text(UI_T_MENU), false },  // 菜单/执行
-            { "OK",                        ui_text(UI_T_ADJ),  true  },  // 长按进/出动作模式
+            { LV_SYMBOL_UP LV_SYMBOL_DOWN, ui_text(UI_T_VIEW),   false },  // 布局/选动作
+            { "OK",                        ui_text(UI_T_ACTION), false },  // 动作/执行
+            { "OK",                        ui_text(UI_T_MENU),  true  },  // 菜单/一级返回
         };
         ui_pixel_hints(s_scr, PET_HINTS, 3);
         s_pet_frame = 0;
@@ -963,30 +964,36 @@ void demo_badge_key(bsp_btn_t btn, bsp_btn_ev_t ev) {
     }
     if (app_config_get()->layout == APP_LAYOUT_PET) {
         if (btn == BSP_BTN_OK && ev == BSP_BTN_LONG) {
-            // 游戏层一级返回:对局 → 游戏菜单 → 动作列表 → 退出动作模式;
-            // 短按 OK 在这一整层里都不会碰菜单,避免手滑直接逃出页面
-            if (s_game != GAME_NONE) {
-                if (s_tap_timer) { lv_timer_delete(s_tap_timer); s_tap_timer = NULL; }
-                bool in_game = (s_game != GAME_SELECT);
-                s_game = in_game ? GAME_SELECT : GAME_NONE;
-                s_phase = 0;
-                if (s_game == GAME_NONE) pet_render_sprite();
-                else game_render();
+            if (s_pet_adjust) {
+                // 游戏层一级返回:对局 → 游戏菜单 → 动作列表 → 退出动作模式
+                if (s_game != GAME_NONE) {
+                    if (s_tap_timer) { lv_timer_delete(s_tap_timer); s_tap_timer = NULL; }
+                    bool in_game = (s_game != GAME_SELECT);
+                    s_game = in_game ? GAME_SELECT : GAME_NONE;
+                    s_phase = 0;
+                    if (s_game == GAME_NONE) pet_render_sprite();
+                    else game_render();
+                } else {
+                    s_pet_adjust = false;
+                }
                 pet_refresh_text();
-                return;
+            } else {
+                demo_request_menu();        // 普通模式 OK 长按 = 菜单(与其他页一致)
             }
-            s_pet_adjust = !s_pet_adjust;   // OK 长按 = 进/出动作模式
+            return;
+        }
+        if (s_pet_adjust) {
+            pet_key(btn, ev);               // 动作模式:按键全部归动作/游戏
+            return;
+        }
+        if (btn == BSP_BTN_OK && ev == BSP_BTN_CLICK) {
+            s_pet_adjust = true;            // 普通模式 OK 短按 = 进动作模式,不会误触菜单
             pet_refresh_text();
             return;
         }
-        if (s_pet_adjust) {                 // 动作模式消化全部按键
-            pet_key(btn, ev);
-            return;
-        }
-        // 普通模式:OK 短按与 ▲/▼ 走下方统一逻辑(菜单 / 切布局)
-    }
-    if (btn == BSP_BTN_OK && ev == BSP_BTN_CLICK) {
-        demo_request_menu();                 // 本页对象已被 exit 删除,之后不能再碰
+        // ▲/▼ 短按落到下方统一逻辑 = 切布局
+    } else if (btn == BSP_BTN_OK && ev == BSP_BTN_CLICK) {
+        demo_request_menu();                // 名片/二维码页:OK 短按 = 菜单
         return;
     }
     if (ev == BSP_BTN_CLICK && (btn == BSP_BTN_UP || btn == BSP_BTN_DOWN)) {

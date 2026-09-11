@@ -20,6 +20,7 @@ extern "C" {
     X(TOGGLE,       "开关",                  "Toggle") \
     X(SEND,         "翻页",                  "Turn") \
     X(KEYMAP,       "键位",                  "Key map") \
+    X(ACTION,       "动作",                  "Action") \
     X(MODE,         "模式",                  "Mode") \
     X(TURN,         "翻段",                  "Segment") \
     X(SPEED,        "速度",                  "Speed") \
