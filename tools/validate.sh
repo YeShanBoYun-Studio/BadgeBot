@@ -13,6 +13,7 @@ run_static_checks() {
     local test_dir
 
     python3 tools/check_repo.py
+    python3 tools/gen_portal_gzip.py --check
 
     actionlint_bin="${ACTIONLINT_BIN:-}"
     if [[ -z "${actionlint_bin}" ]]; then

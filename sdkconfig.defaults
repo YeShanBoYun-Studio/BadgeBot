@@ -33,6 +33,12 @@ CONFIG_LV_MEM_SIZE_KILOBYTES=64
 # --- 系统 ---
 CONFIG_FREERTOS_HZ=1000
 
+# --- lwip TCP 缓冲:堆只有 ~35KB,门户同时服务 3 个连接,
+# 默认 5744B/连接 会在手机关联瞬间吃掉 17KB 导致堆崩(实测最低 204B)。
+# 2920 = 2×MSS(lwip 允许的下限),门户页面 7KB 分 3 个窗口发完,够用。
+CONFIG_LWIP_TCP_SND_BUF_DEFAULT=2920
+CONFIG_LWIP_TCP_WND_DEFAULT=2920
+
 # --- FATFS(store 分区,上传资产)---
 # 长文件名支持:关闭时 8.3 短名规则会让 fopen("avatar.rgb565") 直接失败
 # (扩展名 6 字符超限,页面表现为"写入失败")。LFN 工作区走堆。

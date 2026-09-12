@@ -44,8 +44,9 @@ bool app_wifi_portal_get(char *ssid, size_t ssid_len, char *pass, size_t pass_le
 // 配网剩余毫秒数(页面倒计时用)。
 uint32_t app_wifi_portal_remaining_ms(void);
 
-// 由门户在 Wi-Fi 凭据保存成功后调用:配网窗口将停留数秒并自动关闭。
-void app_portal_notify_saved(void);
+// 页面点「完成并联网」后调用:AP+STA 并存,STA 立刻连路由器校时;
+// 热点保持开放到配网窗口结束,期间手机可继续连接与上传。
+void app_wifi_portal_sync_now(void);
 
 // 由门户在保存 Wi-Fi 后调用:延长配网窗口,让用户继续上传图片/保存资料,直到超时或"完成并联网"。
 void app_wifi_portal_extend(uint32_t ms);

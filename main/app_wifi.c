@@ -18,6 +18,7 @@
 #include "esp_mac.h"
 #include "esp_netif.h"
 #include "esp_random.h"
+#include "esp_system.h"
 #include "esp_wifi.h"
 #include "dns_server.h"
 #include "freertos/FreeRTOS.h"
@@ -31,7 +32,6 @@
 #define RETRY_INTERVAL_MS  300000    // 未连上时的重试间隔
 #define RESYNC_INTERVAL_MS 3600000   // 正常重连间隔(每小时校时/拉数据)
 #define PORTAL_TIMEOUT_MS  180000    // 配网门户默认时长
-#define PORTAL_SAVED_MS    3000      // 保存成功后停留片刻再关闭,让手机看到回执
 
 static const char *TAG = "app_wifi";
 
@@ -53,19 +53,48 @@ static volatile bool s_hold_req;
 
 // 配网模式状态(任务写,页面/HTTP 读;读取处不要求强一致)
 static volatile bool s_portal_active;
-static volatile bool s_portal_saved;
 static uint32_t s_portal_deadline;
-static uint32_t s_portal_saved_at;
 static char s_ap_ssid[32], s_ap_pass[16];
+
+// 门户内「完成并联网」:不关热点,只触发 STA 立刻连接路由器校时
+static volatile bool s_sync_req;
 
 static void on_event(void *arg, esp_event_base_t base, int32_t id, void *data)
 {
-    (void)arg; (void)data;
+    (void)arg;
     if (base == WIFI_EVENT && id == WIFI_EVENT_STA_DISCONNECTED) {
         s_connected = false;
     } else if (base == IP_EVENT && id == IP_EVENT_STA_GOT_IP) {
         s_connected = true;
         app_clock_network_up();
+    }
+    // AP 侧事件留痕:排查"手机看得见热点但连不上"时,这里是唯一证据源。
+    // 只有 STACONNECTED 没有 PROBEREQ = 手机端没发起关联;连上即断的 reason 见
+    // esp_wifi_types.h(2=AUTH_EXPIRE,15=4WAY_HANDSHAKE_TIMEOUT 多为密码,201=NO_AP_FOUND)。
+    if (base == WIFI_EVENT) {
+        switch (id) {
+        case WIFI_EVENT_AP_START:
+            ESP_LOGI(TAG, "AP 已启动(heap=%u)", (unsigned)esp_get_free_heap_size());
+            break;
+        case WIFI_EVENT_AP_PROBEREQRECVED: {
+            wifi_event_ap_probe_req_rx_t *e = (wifi_event_ap_probe_req_rx_t *)data;
+            ESP_LOGI(TAG, "AP:收到探针 rssi=%d(" MACSTR ")", e->rssi, MAC2STR(e->mac));
+            break;
+        }
+        case WIFI_EVENT_AP_STACONNECTED: {
+            wifi_event_ap_staconnected_t *e = (wifi_event_ap_staconnected_t *)data;
+            ESP_LOGI(TAG, "AP:客户端已关联 MAC=" MACSTR " aid=%d", MAC2STR(e->mac), e->aid);
+            break;
+        }
+        case WIFI_EVENT_AP_STADISCONNECTED: {
+            wifi_event_ap_stadisconnected_t *e = (wifi_event_ap_stadisconnected_t *)data;
+            ESP_LOGW(TAG, "AP:客户端断开 MAC=" MACSTR " reason=%d",
+                     MAC2STR(e->mac), e->reason);
+            break;
+        }
+        default:
+            break;
+        }
     }
 }
 
@@ -153,11 +182,12 @@ static void portal_setup_ap(void)
     }
 
     wifi_config_t ap_cfg = { 0 };
-    strlcpy((char *)ap_cfg.ap.ssid, s_ap_ssid, sizeof(ap_cfg.ap.ssid));
+    strlcpy((char *)ap_cfg.ap.ssid, s_ap_ssid, sizeof(s_ap_ssid));
     ap_cfg.ap.ssid_len = strlen(s_ap_ssid);
-    strlcpy((char *)ap_cfg.ap.password, s_ap_pass, sizeof(ap_cfg.ap.password));
+    strlcpy((char *)ap_cfg.ap.password, s_ap_pass, sizeof(s_ap_pass));
     ap_cfg.ap.authmode = WIFI_AUTH_WPA2_PSK;
     ap_cfg.ap.max_connection = 2;
+    ap_cfg.ap.channel = 11;   // 固定 11 信道:默认 1/6 与家用路由器同频干扰严重
     if ((e = esp_wifi_set_config(WIFI_IF_AP, &ap_cfg)) != ESP_OK) {
         ESP_LOGE(TAG, "AP 配置写入失败: %s", esp_err_to_name(e));
         return;
@@ -168,13 +198,17 @@ static void portal_setup_ap(void)
 static void run_portal(uint32_t timeout_ms)
 {
     ESP_LOGI(TAG, "进入配网模式");
-    s_portal_saved = false;
+    s_sync_req = false;
     s_portal_deadline = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS) + timeout_ms;
 
     esp_wifi_disconnect();
     esp_wifi_stop();
     portal_setup_ap();
     esp_wifi_start();
+    // softAP 服务手机时必须关调制解调器省电:否则下行帧随信标节拍延迟,
+    // 手机收不到应答(TCP 全 EAGAIN)、最终被 AUTH_EXPIRE 踢掉(安卓报"密码错误")
+    esp_err_t ps = esp_wifi_set_ps(WIFI_PS_NONE);
+    ESP_LOGI(TAG, "softAP 省电关闭: %s", esp_err_to_name(ps));
     esp_wifi_disconnect();   // 配网期间别让 STA 拿旧凭据自动连接
     // 强制门户:捕获所有 DNS 查询,手机连上热点会自动弹出配置页(官方 captive_portal 做法)
     dns_server_config_t dns_cfg = DNS_SERVER_CONFIG_SINGLE("*", "WIFI_AP_DEF");
@@ -188,17 +222,36 @@ static void run_portal(uint32_t timeout_ms)
         s_portal_active = true;
         ESP_LOGI(TAG, "配网门户就绪: http://192.168.4.1");
 
-        // 门户窗口:超时、保存成功(延迟片刻)或页面上提前关闭,任一即退出
+        // 门户窗口:只有倒计时结束或板子上退出配网页才关闭;
+        // 页面「完成并联网」只触发联网校时,热点保持开放,手机可继续连接/上传
+        bool sync_started = false, sync_ok = false;
+        uint32_t last_heap_log = 0;
         for (;;) {
             EventBits_t bits = xEventGroupWaitBits(s_events, EV_EXIT, pdTRUE, pdFALSE,
                                                    pdMS_TO_TICKS(250));
             uint32_t now = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
-            if ((bits & EV_EXIT) ||
-                (int32_t)(now - s_portal_deadline) >= 0 ||
-                (s_portal_saved && (int32_t)(now - s_portal_saved_at) >= PORTAL_SAVED_MS)) {
+            if ((bits & EV_EXIT) || (int32_t)(now - s_portal_deadline) >= 0) {
                 break;
             }
+            // 堆轨迹:5 秒一拍。若发送卡顿/掉线时刻堆在衰减,就是内存问题;
+            // 若堆平稳,则指向射频/对端行为。最低水位含开机以来全部历史。
+            if (now - last_heap_log >= 5000) {
+                last_heap_log = now;
+                ESP_LOGI(TAG, "portal heap free=%u min=%u",
+                         (unsigned)esp_get_free_heap_size(),
+                         (unsigned)esp_get_minimum_free_heap_size());
+            }
+            if (s_sync_req && !sync_started) {
+                sync_started = true;
+                ESP_LOGI(TAG, "门户内联网校时(AP 保持开放)");
+                esp_wifi_connect();   // APSTA:STA 连家宽路由器,AP 继续服务手机
+            }
+            if (sync_started && !sync_ok && s_connected) {
+                sync_ok = true;
+                ESP_LOGI(TAG, "已联网,校时进行中(门户开放至倒计时结束)");
+            }
         }
+        s_sync_req = false;
         s_portal_active = false;
         app_portal_http_stop();
         if (dns_handle) stop_dns_server(dns_handle);
@@ -208,6 +261,7 @@ static void run_portal(uint32_t timeout_ms)
     esp_wifi_stop();
     esp_wifi_set_mode(WIFI_MODE_STA);
     esp_wifi_start();
+    esp_wifi_set_ps(WIFI_PS_NONE);
 }
 
 // ---- 任务主体 ----
@@ -236,6 +290,8 @@ static void wifi_task(void *arg)
     // C3 无 PSRAM,默认 10 静态 RX×1600B 偏重(徽章流量小);缩到 6/16 降低 NO_MEM 概率
     cfg.static_rx_buf_num = 6;
     cfg.dynamic_rx_buf_num = 16;
+    // 动态 TX 默认 32×1.6KB≈51KB 上限,门户传页面时堆直接见底;砍半换稳定
+    cfg.dynamic_tx_buf_num = 16;
     // 开机瞬间的堆竞争可能让 esp_wifi_init 拿不到内存:延迟重试而不是永久放弃联网
     for (int attempt = 1;; attempt++) {
         e = esp_wifi_init(&cfg);
@@ -248,6 +304,7 @@ static void wifi_task(void *arg)
     esp_wifi_set_storage(WIFI_STORAGE_FLASH);   // STA 凭据持久化,门户保存后每次脉冲自动连
     esp_wifi_set_mode(WIFI_MODE_STA);
     esp_wifi_start();
+    esp_wifi_set_ps(WIFI_PS_NONE);   // 脉冲窗口短,关省电换校时/拉取的稳定时延
 
     s_events = xEventGroupCreate();
 
@@ -281,6 +338,7 @@ static void wifi_task(void *arg)
             esp_wifi_set_storage(WIFI_STORAGE_FLASH);
             esp_wifi_set_mode(WIFI_MODE_STA);
             esp_wifi_start();
+            esp_wifi_set_ps(WIFI_PS_NONE);
             continue;
         }
         if (bits & EV_HOLD) {
@@ -402,8 +460,8 @@ void app_wifi_portal_extend(uint32_t ms)
     s_portal_deadline += ms;
 }
 
-void app_portal_notify_saved(void)
+void app_wifi_portal_sync_now(void)
 {
-    s_portal_saved = true;
-    s_portal_saved_at = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
+    // 「完成并联网」:AP+STA 并存,连家宽路由器校时;热点保持开放到倒计时结束
+    s_sync_req = true;
 }
