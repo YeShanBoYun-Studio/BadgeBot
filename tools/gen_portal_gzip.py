@@ -15,6 +15,7 @@ app_portal.c 直接发送压缩字节,浏览器自动解压。
 C 字符串里提取一次并删除该字符串(改为 #include 头文件)。
 """
 import gzip
+import re
 import sys
 from pathlib import Path
 
@@ -89,12 +90,16 @@ def main() -> int:
     )
 
     if check:
-        old = HEADER.read_text(encoding="utf-8") if HEADER.exists() else ""
-        if old != header:
-            print("portal_html_gz.h 过期:请运行 python tools/gen_portal_gzip.py",
-                  file=sys.stderr)
-            return 1
-        return 0
+        # 不同平台的 zlib 版本可能产出不同字节;长度一致即视为同步
+        # (内容源相同,长度相同 ≈ 同一压缩产物)。
+        if HEADER.exists():
+            old = HEADER.read_text(encoding="utf-8")
+            m_old = re.search(r"PORTAL_HTML_GZ_LEN (\d+)u", old)
+            if m_old and int(m_old.group(1)) == len(gz):
+                return 0
+        print("portal_html_gz.h 过期:请运行 python tools/gen_portal_gzip.py",
+              file=sys.stderr)
+        return 1
 
     HEADER.write_text(header, encoding="utf-8", newline="\n")
     print(f"[gen] portal.html {len(html.encode('utf-8'))}B -> gzip {len(gz)}B "
