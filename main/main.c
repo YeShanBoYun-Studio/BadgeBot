@@ -23,6 +23,10 @@
 #include "lvgl.h"
 #include "esp_log.h"
 #include "esp_sleep.h"
+#include "esp_system.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include <unistd.h>
 
 static const char *TAG = "main";
 
@@ -85,6 +89,9 @@ static bool     s_swallow;         // 唤醒屏幕的那次按键,其后续 CLIC
 static int      s_sys_ticks;
 
 static int page_count(void) { return (DEMO_COUNT + MENU_PAGE_SIZE - 1) / MENU_PAGE_SIZE; }
+
+// 串口单字节命令任务(定义在文件尾):p=开配网门户 x=关闭,自动化测试用
+static void console_cmd_task(void *arg);
 
 static void set_hidden(lv_obj_t *obj, bool hidden) {
     if (hidden) lv_obj_add_flag(obj, LV_OBJ_FLAG_HIDDEN);
@@ -291,16 +298,47 @@ void app_main(void) {
 
     // Wi-Fi 脉冲:每小时连一次做校时/拉取,凭据用设备里已存的(官方固件配过网就有)。
     app_wifi_start();
+    xTaskCreate(console_cmd_task, "concmd", 3072, NULL, 1, NULL);
 
     if (bsp_lvgl_lock(1000)) {
         s_last_key_tick = lv_tick_get();
         status_refresh();                                     // 首屏建好时状态栏就有值
-        if (app_config_get()->boot_badge) enter_demo(DEMO_BADGE);
-        else                              enter_menu();
+        if (demo_portal_reboot_check())      enter_demo(DEMO_PORTAL);   // 配网重启而来
+        else if (app_config_get()->boot_badge) enter_demo(DEMO_BADGE);
+        else                                   enter_menu();
         s_sys_timer = lv_timer_create(sys_tick, SYS_TICK_MS, NULL);
         bsp_lvgl_unlock();
     }
 
     ESP_LOGI(TAG, "就绪:Display=%d Button=%d Audio=%d Battery=%d",
              s_ok[DEMO_DISPLAY], s_ok[DEMO_BUTTON], s_ok[DEMO_AUDIO], s_ok[DEMO_BATTERY]);
+}
+
+// 串口单字节命令,自动化测试用(量产可整段删除):p=开配网门户 x=关闭。
+// 板子不插在手里时,PC 也能进配网流程;read 阻塞等数据,空闲零开销。
+static void console_cmd_task(void *arg)
+{
+    (void)arg;
+    char c;
+    for (;;) {
+        int n = read(0, &c, 1);
+        if (n != 1) {
+            vTaskDelay(pdMS_TO_TICKS(200));
+            continue;
+        }
+        if (c == 'p') {
+            ESP_LOGI(TAG, "串口命令:进入配网");
+            app_wifi_portal_open(180000);
+        } else if (c == 'P') {
+            // 模拟用户从菜单进配网页的完整路径:打 RTC 标记并重启,
+            // 下次开机直接落配网页(干净堆)。自动化验收用。
+            ESP_LOGI(TAG, "串口命令:重启进配网(用户路径)");
+            extern bool demo_portal_reboot_request(void);
+            demo_portal_reboot_request();
+            esp_restart();
+        } else if (c == 'x') {
+            ESP_LOGI(TAG, "串口命令:退出配网");
+            app_wifi_portal_close();
+        }
+    }
 }

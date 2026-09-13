@@ -14,6 +14,7 @@
 #include "app_portal.h"
 #include "demo_radio.h"
 #include "esp_event.h"
+#include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "esp_mac.h"
 #include "esp_netif.h"
@@ -233,13 +234,14 @@ static void run_portal(uint32_t timeout_ms)
             if ((bits & EV_EXIT) || (int32_t)(now - s_portal_deadline) >= 0) {
                 break;
             }
-            // 堆轨迹:5 秒一拍。若发送卡顿/掉线时刻堆在衰减,就是内存问题;
-            // 若堆平稳,则指向射频/对端行为。最低水位含开机以来全部历史。
+            // 堆轨迹:5 秒一拍。free 掉=泄漏;free 平但 maxblk 掉=碎片。
+            // 最低水位含开机以来全部历史。
             if (now - last_heap_log >= 5000) {
                 last_heap_log = now;
-                ESP_LOGI(TAG, "portal heap free=%u min=%u",
+                ESP_LOGI(TAG, "portal heap free=%u min=%u maxblk=%u",
                          (unsigned)esp_get_free_heap_size(),
-                         (unsigned)esp_get_minimum_free_heap_size());
+                         (unsigned)esp_get_minimum_free_heap_size(),
+                         (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_8BIT));
             }
             if (s_sync_req && !sync_started) {
                 sync_started = true;

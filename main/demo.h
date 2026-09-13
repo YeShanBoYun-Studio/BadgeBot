@@ -2,6 +2,8 @@
 // 新增一个演示页 = 实现这三个函数 + 在 main.c 的 DEMOS[] 里加一行。
 #pragma once
 
+#include <stdbool.h>
+
 #include "bsp_button.h"
 
 typedef struct {
@@ -28,6 +30,12 @@ void demo_settings_key(bsp_btn_t btn, bsp_btn_ev_t ev);
 
 void demo_portal_enter(void);  void demo_portal_exit(void);
 void demo_portal_key(bsp_btn_t btn, bsp_btn_ev_t ev);
+
+// 开机时调用一次:上次重启若是为配网而来(配网页自动重启机制),
+// 消费 RTC 标记并返回 true —— main.c 应直接进入配网页而不是菜单/主页。
+bool demo_portal_reboot_check(void);
+// 打"重启进配网"标记(重启由调用方执行);串口自动化命令 P 复用此入口。
+bool demo_portal_reboot_request(void);
 
 void demo_display_enter(void); void demo_display_exit(void);
 void demo_display_key(bsp_btn_t btn, bsp_btn_ev_t ev);

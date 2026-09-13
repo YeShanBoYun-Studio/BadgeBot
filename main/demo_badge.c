@@ -205,6 +205,12 @@ static void build_qr(const app_config_t *cfg, const ui_theme_t *th) {
         lv_obj_set_width(l, QR_SHOW);
         lv_obj_set_style_text_align(l, LV_TEXT_ALIGN_CENTER, 0);
     }
+    // 48KB 池是否装得下 4 个 96px 码,串口直接给数(自动化验收用)
+    lv_mem_monitor_t mon;
+    lv_mem_monitor(&mon);
+    printf("QR_LAYOUT lv_mem used=%u%% (free=%u/%u) frag=%u%%\n",
+           (unsigned)mon.used_pct, (unsigned)mon.free_size,
+           (unsigned)mon.total_size, (unsigned)mon.frag_pct);
 }
 
 /* ==================== 像素宠物布局(拓麻歌子式) ==================== */
